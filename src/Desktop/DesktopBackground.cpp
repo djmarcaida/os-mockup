@@ -1,4 +1,5 @@
 #include "DesktopBackground.h"
+#include "UiHelpers.h"
 #include <imgui.h>
 #include <iomanip>
 #include <sstream>
@@ -19,7 +20,8 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
                                ImGuiWindowFlags_NoSavedSettings |
                                ImGuiWindowFlags_NoBringToFrontOnFocus |
                                ImGuiWindowFlags_NoNavFocus |
-                               ImGuiWindowFlags_NoBackground;
+                               ImGuiWindowFlags_NoBackground |
+                               ImGuiWindowFlags_NoScrollbar;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -78,58 +80,79 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
         );
 
         // 2. Desktop Shortcut Icons Grid (Left side)
-        float iconStartX = pMin.x + 24.0f;
-        float iconStartY = pMin.y + 24.0f;
-        float iconW = 100.0f;
-        float iconH = 80.0f;
-        float iconGapY = 16.0f;
+        const float iconStartX = pMin.x + 24.0f;
+        const float iconStartY = pMin.y + 20.0f;
+        const float iconW = 104.0f;
+        const float iconH = 72.0f;
+        const float iconStep = 84.0f;
+        const float usableHeight = viewport->Size.y - Ui::TaskbarHeight - 76.0f;
+        const int rows = std::max(1, static_cast<int>(usableHeight / iconStep));
 
         struct DesktopShortcut {
             const char* label;
             const char* tag;
             bool* targetBool;
+            Ui::Icon icon;
         };
 
         DesktopShortcut shortcuts[] = {
-            {"[ Taskmgr ]\nTask Manager", "##sc_taskmgr", &ctx.showTaskManager},
-            {"[ Explorer ]\nFile Explorer", "##sc_explorer", &ctx.showFileExplorer},
-            {"[ Terminal ]\nCommand Line", "##sc_terminal", &ctx.showTerminal},
-            {"[ System ]\nSystem Info", "##sc_sysinfo", &ctx.showSystemInfo},
-            {"[ Readme ]\nReadme.txt", "##sc_readme", &ctx.showNotepad}
+            {"Task Manager", "##sc_taskmgr", &ctx.showTaskManager, Ui::Icon::Tasks},
+            {"File Explorer", "##sc_explorer", &ctx.showFileExplorer, Ui::Icon::Folder},
+            {"Terminal", "##sc_terminal", &ctx.showTerminal, Ui::Icon::Terminal},
+            {"System Info", "##sc_sysinfo", &ctx.showSystemInfo, Ui::Icon::System},
+            {"Readme.txt", "##sc_readme", &ctx.showNotepad, Ui::Icon::Note}
         };
 
         for (size_t i = 0; i < sizeof(shortcuts)/sizeof(shortcuts[0]); ++i) {
-            ImGui::SetCursorScreenPos(ImVec2(iconStartX, iconStartY + i * (iconH + iconGapY)));
+            const int index = static_cast<int>(i);
+            ImGui::SetCursorScreenPos(ImVec2(iconStartX + (index / rows) * 116.0f,
+                                            iconStartY + (index % rows) * iconStep));
             ImGui::PushID(shortcuts[i].tag);
             
             // Stylized desktop icon button
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.18f, 0.28f, 0.55f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.45f, 0.75f, 0.85f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.35f, 0.65f, 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(.94f, .97f, 1.0f, 1.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
 
-            if (ImGui::Button(shortcuts[i].label, ImVec2(iconW, iconH))) {
-                *shortcuts[i].targetBool = !(*shortcuts[i].targetBool);
+            if (ImGui::Button("##shortcut", ImVec2(iconW, iconH))) {
+                if (shortcuts[i].icon == Ui::Icon::Note) {
+                    const VirtualFile* readme = ctx.findFileByPath("C:\\Users\\Administrator\\Desktop\\readme.txt");
+                    if (readme && !readme->isDirectory) ctx.openFileInNotepad(readme);
+                    else *shortcuts[i].targetBool = true;
+                } else {
+                    *shortcuts[i].targetBool = true;
+                }
             }
+            const ImVec2 itemMin = ImGui::GetItemRectMin();
+            Ui::drawIcon(drawList, shortcuts[i].icon, ImVec2(itemMin.x + 38.0f, itemMin.y + 10.0f),
+                         28.0f, IM_COL32(224, 241, 255, 255));
+            const float labelWidth = ImGui::CalcTextSize(shortcuts[i].label).x;
+            drawList->AddText(ImVec2(itemMin.x + (iconW - labelWidth) * .5f, itemMin.y + 48.0f),
+                              IM_COL32(240, 247, 255, 255), shortcuts[i].label);
+            if (ImGui::IsItemHovered() || ImGui::IsItemFocused()) ImGui::SetTooltip("Open %s", shortcuts[i].label);
 
             ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
+            ImGui::PopStyleColor(4);
             ImGui::PopID();
         }
 
         // 3. Top-Left Quick System Bar (Visible PWR Button)
-        ImGui::SetCursorScreenPos(ImVec2(pMin.x + 24.0f, pMin.y + 540.0f));
+        ImGui::SetCursorScreenPos(ImVec2(pMin.x + 24.0f, pMax.y - Ui::TaskbarHeight - 48.0f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.18f, 0.18f, 0.85f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.25f, 0.25f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.80f, 0.23f, 0.23f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.60f, 0.10f, 0.10f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
 
         if (ImGui::Button("PWR (Exit)", ImVec2(100.0f, 34.0f))) {
             ctx.showPowerDialog = true;
         }
+        if (ImGui::IsItemHovered() || ImGui::IsItemFocused()) ImGui::SetTooltip("Power options (Alt+F4)");
 
         ImGui::PopStyleVar();
-        ImGui::PopStyleColor(3);
+        ImGui::PopStyleColor(4);
 
         // 4. Real-time System Clock & Stats Widget (Anchored in Fixed Top-Right Corner)
         float widgetW = 280.0f;
@@ -164,8 +187,8 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
 
         ImGui::SetCursorScreenPos(ImVec2(clockPos.x + 16.0f, clockPos.y + 68.0f));
         ImGui::TextColored(ImVec4(0.6f, 0.8f, 0.6f, 0.9f), "Uptime: %s", ctx.getUptimeString().c_str());
-        ImGui::SameLine(160.0f);
-        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 0.9f), "CPU: %.1f%%", ctx.getTotalCpuUsage());
+        ImGui::SetCursorScreenPos(ImVec2(clockPos.x + 168.0f, clockPos.y + 68.0f));
+        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "CPU: %.1f%%", ctx.getTotalCpuUsage());
 
         ImGui::SetCursorScreenPos(ImVec2(clockPos.x + 16.0f, clockPos.y + 88.0f));
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 0.8f), "RAM: %d MB / %d MB", 
@@ -175,43 +198,6 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
 
     ImGui::PopStyleVar(2);
 
-    // 5. Graceful Power / Shutdown Confirmation Modal Dialog
-    if (ctx.showPowerDialog) {
-        ImGui::OpenPopup("Power Options##shutdown_modal");
-    }
-
-    ImVec2 center = viewport->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(380.0f, 190.0f), ImGuiCond_Appearing);
-
-    if (ImGui::BeginPopupModal("Power Options##shutdown_modal", &ctx.showPowerDialog, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Shut down CSOPESY Workstation OS?");
-        ImGui::Spacing();
-        ImGui::TextWrapped("All running processes, file locks, and compositor state will be saved and cleanly closed.");
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        if (ImGui::Button("Shut Down (Clean Exit)", ImVec2(160.0f, 32.0f))) {
-            ctx.requestShutdown();
-            ImGui::CloseCurrentPopup();
-            ctx.showPowerDialog = false;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Restart (Reboot)", ImVec2(110.0f, 32.0f))) {
-            ctx.reboot();
-            ImGui::CloseCurrentPopup();
-            ctx.showPowerDialog = false;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(75.0f, 32.0f))) {
-            ImGui::CloseCurrentPopup();
-            ctx.showPowerDialog = false;
-        }
-
-        ImGui::EndPopup();
-    }
 }
 
 } // namespace OS

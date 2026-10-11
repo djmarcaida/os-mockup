@@ -16,6 +16,18 @@ static void glfwErrorCallback(int error, const char* description) {
     std::cerr << "[GLFW Error " << error << "]: " << description << std::endl;
 }
 
+static void glfwCloseCallback(GLFWwindow* window) {
+    auto* context = static_cast<OS::SystemContext*>(glfwGetWindowUserPointer(window));
+    if (!context || context->shouldCloseApp()) return;
+
+    // Native close requests use the same cancelable power flow as the desktop.
+    glfwSetWindowShouldClose(window, GLFW_FALSE);
+    if (context->getState() != OS::BootState::DESKTOP) {
+        context->setState(OS::BootState::DESKTOP);
+    }
+    context->showPowerDialog = true;
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -52,6 +64,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    glfwSetWindowSizeLimits(window, 640, 480, GLFW_DONT_CARE, GLFW_DONT_CARE);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable V-Sync
 
@@ -79,6 +92,8 @@ int main(int argc, char** argv) {
 
     // 7. Initialize Operating System State Context
     OS::SystemContext sysContext;
+    glfwSetWindowUserPointer(window, &sysContext);
+    glfwSetWindowCloseCallback(window, glfwCloseCallback);
 
     double lastTime = glfwGetTime();
 
@@ -132,6 +147,7 @@ int main(int argc, char** argv) {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    glfwSetWindowUserPointer(window, nullptr);
     glfwDestroyWindow(window);
     glfwTerminate();
 

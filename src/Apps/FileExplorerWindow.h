@@ -11,7 +11,8 @@ public:
 private:
     static void renderTreeView(SystemContext& ctx, const VirtualFile* dir);
     static void renderFileList(SystemContext& ctx);
-    static const VirtualFile* s_selectedFile;
+    static std::string s_selectedName;
+    static std::string s_selectionDirectory;
 };
 
 } // namespace OS

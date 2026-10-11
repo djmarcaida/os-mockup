@@ -1,4 +1,5 @@
 #include "TerminalWindow.h"
+#include "../Desktop/UiHelpers.h"
 #include <imgui.h>
 #include <cstring>
 
@@ -13,19 +14,19 @@ void TerminalWindow::render(SystemContext& ctx, float deltaTime) {
     (void)deltaTime;
     if (!ctx.showTerminal) return;
 
-    ImGui::SetNextWindowSize(ImVec2(640, 420), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(200, 160), ImGuiCond_FirstUseEver);
-
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.05f, 0.07f, 0.98f));
+    Ui::prepareAppWindow("CSOPESY Command Prompt (csopesy_sh)###TERMINAL_WND", ImVec2(640, 420),
+                         ImVec2(200, 160), ImVec2(460, 300));
 
     if (ImGui::Begin("CSOPESY Command Prompt (csopesy_sh)###TERMINAL_WND", &ctx.showTerminal)) {
         // Top help hint
-        ImGui::TextDisabled("CSOPESY Shell v2.4 | Type 'help' for available commands or 'reboot'/'shutdown'");
+        ImGui::TextWrapped("Simulated CSOPESY Shell | Type 'help' for commands.");
         ImGui::Separator();
 
         // Console text output region
         const float footerHeightToReserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing() + 4.0f;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.04f, 0.05f, 0.07f, 1.0f));
         ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footerHeightToReserve), false, ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::PopStyleColor();
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 2));
 
@@ -54,7 +55,7 @@ void TerminalWindow::render(SystemContext& ctx, float deltaTime) {
         ImGui::Separator();
 
         // Command line input prompt
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "admin@csopesy:~$");
+        ImGui::TextUnformatted("admin@csopesy:~$");
         ImGui::SameLine();
 
         ImGuiInputTextFlags inputFlags = ImGuiInputTextFlags_EnterReturnsTrue | 
@@ -88,7 +89,7 @@ void TerminalWindow::render(SystemContext& ctx, float deltaTime) {
             return 0;
         };
 
-        ImGui::PushItemWidth(-70.0f);
+        ImGui::PushItemWidth(-78.0f);
         bool reclaimFocus = false;
         if (ImGui::InputText("##CommandLineInput", s_inputBuffer, sizeof(s_inputBuffer), inputFlags, callback)) {
             std::string cmd = s_inputBuffer;
@@ -110,7 +111,7 @@ void TerminalWindow::render(SystemContext& ctx, float deltaTime) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Execute", ImVec2(60, 0))) {
+        if (ImGui::Button("Execute", ImVec2(70, 0))) {
             std::string cmd = s_inputBuffer;
             if (!cmd.empty()) {
                 s_localHistory.push_back(cmd);
@@ -123,7 +124,6 @@ void TerminalWindow::render(SystemContext& ctx, float deltaTime) {
     }
     ImGui::End();
 
-    ImGui::PopStyleColor();
 }
 
 } // namespace OS

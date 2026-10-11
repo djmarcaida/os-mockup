@@ -10,6 +10,7 @@ public:
 
 private:
     static void handleShortcuts(SystemContext& ctx);
+    static void renderPowerDialog(SystemContext& ctx);
 };
 
 } // namespace OS

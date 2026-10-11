@@ -50,6 +50,7 @@ public:
     const VirtualFile* getCurrentDirectory() const { return m_currentDir; }
     const std::string& getCurrentDirPath() const { return m_currentDirPath; }
     bool navigateTo(const std::string& folderName);
+    bool navigateToDirectory(const VirtualFile* directory);
     bool navigateUp();
     const VirtualFile* findFileByPath(const std::string& path) const;
 
@@ -64,6 +65,14 @@ public:
     std::string notepadBuffer;
     bool notepadModified = false;
     void openFileInNotepad(const std::string& title, const std::string& content);
+    void openFileInNotepad(const VirtualFile* file);
+    bool hasPendingNotepadOpen() const { return !m_pendingNotepadFilePath.empty(); }
+    const std::string& getPendingNotepadFilePath() const { return m_pendingNotepadFilePath; }
+    bool confirmNotepadOpen();
+    void cancelNotepadOpen();
+    void newNotepadDocument();
+    bool saveNotepadDocument(std::string& outMessage);
+    std::string getNotepadFilePath() const { return m_notepadFilePath; }
 
     // Window Visibility Toggles
     bool showTaskManager = false;
@@ -97,6 +106,8 @@ private:
     void initVFS();
     void updateProcesses(float deltaTime);
     void updatePerformanceHistory(float deltaTime);
+    void refreshProcessMetrics(bool updateIdleProcess = false);
+    bool getCanonicalPath(const VirtualFile* file, std::string& outPath) const;
 
     BootState m_state = BootState::BIOS_POST;
     float m_stateTimer = 0.0f;
@@ -110,6 +121,8 @@ private:
     float m_totalCpuUsage = 0.0f;
     float m_totalMemoryMB = 0.0f;
     const float m_maxMemoryMB = 8192.0f;
+    float m_processTimer = 0.0f;
+    int m_nextPid = 1024;
     std::vector<float> m_cpuHistory;
     std::vector<float> m_memoryHistory;
     float m_historyTimer = 0.0f;
@@ -118,6 +131,8 @@ private:
     std::unique_ptr<VirtualFile> m_vfsRoot;
     VirtualFile* m_currentDir = nullptr;
     std::string m_currentDirPath = "C:\\";
+    std::string m_notepadFilePath;
+    std::string m_pendingNotepadFilePath;
 
     // Terminal
     std::vector<TerminalLine> m_terminalLines;

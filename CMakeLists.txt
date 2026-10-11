@@ -129,4 +129,26 @@ else()
     target_compile_options(os_mockup PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(os_context_tests
+        tests/SystemContextTests.cpp
+        src/Core/SystemContext.cpp
+    )
+    target_include_directories(os_context_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    if(MSVC)
+        target_compile_options(os_context_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(os_context_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME system_context COMMAND os_context_tests)
+
+    set(OS_MOCKUP_UI_TEST_SOURCES ${OS_MOCKUP_SOURCES})
+    list(REMOVE_ITEM OS_MOCKUP_UI_TEST_SOURCES src/Main.cpp)
+    add_executable(os_ui_tests tests/UiInteractionTests.cpp ${OS_MOCKUP_UI_TEST_SOURCES})
+    target_include_directories(os_ui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(os_ui_tests PRIVATE imgui glad glfw OpenGL::GL)
+    add_test(NAME ui_interactions COMMAND os_ui_tests)
+endif()
+
 message(STATUS "Configured os_mockup executable target successfully.")

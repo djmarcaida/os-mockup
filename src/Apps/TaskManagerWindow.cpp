@@ -1,10 +1,21 @@
 #include "TaskManagerWindow.h"
+#include "../Desktop/UiHelpers.h"
 #include <imgui.h>
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <sstream>
 
 namespace OS {
+
+namespace {
+std::string foldCase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+}
 
 int TaskManagerWindow::s_selectedPid = -1;
 char TaskManagerWindow::s_searchBuffer[64] = "";
@@ -21,8 +32,8 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
         }
     }
 
-    ImGui::SetNextWindowSize(ImVec2(680, 520), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(180, 100), ImGuiCond_FirstUseEver);
+    Ui::prepareAppWindow("Task Manager (CSOPESY Workstation)###TASK_MANAGER_WND", ImVec2(680, 520),
+                         ImVec2(180, 100), ImVec2(560, 350));
 
     if (ImGui::Begin("Task Manager (CSOPESY Workstation)###TASK_MANAGER_WND", &ctx.showTaskManager)) {
         if (ImGui::BeginTabBar("TaskManagerTabBar")) {
@@ -54,7 +65,7 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                 // Popup for launching a new process
                 if (ImGui::BeginPopup("CreateNewTaskPopup")) {
                     static char newProcName[64] = "notepad.exe";
-                    ImGui::Text("Enter process executable name:");
+                    ImGui::Text("Enter simulated process name:");
                     ImGui::InputText("##new_proc_name", newProcName, sizeof(newProcName));
                     if (ImGui::Button("Run", ImVec2(80, 0))) {
                         ctx.spawnProcess(newProcName, 2.5f, 24.0f);
@@ -70,7 +81,7 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                 // Status banner if any
                 if (!s_statusMessage.empty()) {
                     ImGui::Spacing();
-                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", s_statusMessage.c_str());
+                    ImGui::TextWrapped("%s", s_statusMessage.c_str());
                 }
 
                 ImGui::Spacing();
@@ -79,33 +90,54 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
 
                 // Process Table
                 const auto& processes = ctx.getProcesses();
-                std::string filter = s_searchBuffer;
-                std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
+                const std::string filter = foldCase(s_searchBuffer);
+                std::vector<const ProcessInfo*> rows;
+                for (const ProcessInfo& process : processes)
+                    if (filter.empty() || foldCase(process.name).find(filter) != std::string::npos)
+                        rows.push_back(&process);
 
                 ImGuiTableFlags tableFlags = ImGuiTableFlags_Borders | 
                                             ImGuiTableFlags_RowBg | 
                                             ImGuiTableFlags_Resizable | 
                                             ImGuiTableFlags_ScrollY | 
-                                            ImGuiTableFlags_Sortable;
+                                            ImGuiTableFlags_Sortable |
+                                            ImGuiTableFlags_ScrollX;
 
                 if (ImGui::BeginTable("ProcessTable", 6, tableFlags, ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 6.0f))) {
-                    ImGui::TableSetupColumn("Process Name", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Process Name", ImGuiTableColumnFlags_WidthFixed, 210.0f);
                     ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, 60.0f);
                     ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 80.0f);
                     ImGui::TableSetupColumn("CPU %", ImGuiTableColumnFlags_WidthFixed, 75.0f);
                     ImGui::TableSetupColumn("Memory (MB)", ImGuiTableColumnFlags_WidthFixed, 100.0f);
                     ImGui::TableSetupColumn("Disk (KB/s)", ImGuiTableColumnFlags_WidthFixed, 85.0f);
+                    ImGui::TableSetupScrollFreeze(0, 1);
                     ImGui::TableHeadersRow();
 
-                    for (const auto& proc : processes) {
-                        // Apply filter
-                        if (!filter.empty()) {
-                            std::string procNameLower = proc.name;
-                            std::transform(procNameLower.begin(), procNameLower.end(), procNameLower.begin(), ::tolower);
-                            if (procNameLower.find(filter) == std::string::npos) {
-                                continue;
+                    // Sort a pointer view so terminal ps and backend order remain stable.
+                    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+                        std::stable_sort(rows.begin(), rows.end(), [specs](const ProcessInfo* first, const ProcessInfo* second) {
+                            for (int index = 0; index < specs->SpecsCount; ++index) {
+                                const ImGuiTableColumnSortSpecs& spec = specs->Specs[index];
+                                int order = 0;
+                                const auto compare = [](const auto& a, const auto& b) { return a < b ? -1 : a > b ? 1 : 0; };
+                                switch (spec.ColumnIndex) {
+                                case 0: order = compare(foldCase(first->name), foldCase(second->name)); break;
+                                case 1: order = compare(first->pid, second->pid); break;
+                                case 2: order = compare(foldCase(first->status), foldCase(second->status)); break;
+                                case 3: order = compare(first->cpuUsage, second->cpuUsage); break;
+                                case 4: order = compare(first->memoryMB, second->memoryMB); break;
+                                case 5: order = compare(first->diskIOKB, second->diskIOKB); break;
+                                default: break;
+                                }
+                                if (order != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? order < 0 : order > 0;
                             }
-                        }
+                            return first->pid < second->pid;
+                        });
+                        specs->SpecsDirty = false;
+                    }
+
+                    for (const ProcessInfo* row : rows) {
+                        const ProcessInfo& proc = *row;
 
                         ImGui::TableNextRow();
 
@@ -126,15 +158,17 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                         // Column 2: Status
                         ImGui::TableSetColumnIndex(2);
                         if (proc.status == "Running") {
-                            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "%s", proc.status.c_str());
+                            ImGui::TextUnformatted(proc.status.c_str());
                         } else {
-                            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", proc.status.c_str());
+                            ImGui::TextDisabled("%s", proc.status.c_str());
                         }
 
                         // Column 3: CPU %
                         ImGui::TableSetColumnIndex(3);
                         if (proc.cpuUsage > 15.0f && proc.name != "idle_process") {
-                            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "%.1f %%", proc.cpuUsage);
+                            const ImVec4 warning = ctx.getTheme() == ThemeMode::CLASSIC_98
+                                ? ImVec4(.55f, .15f, .03f, 1.0f) : ImVec4(1.0f, .6f, .2f, 1.0f);
+                            ImGui::TextColored(warning, "%.1f %%", proc.cpuUsage);
                         } else {
                             ImGui::Text("%.1f %%", proc.cpuUsage);
                         }
@@ -142,7 +176,7 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                         // Column 4: Memory (MB)
                         ImGui::TableSetColumnIndex(4);
                         if (proc.memoryMB > 100.0f) {
-                            ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "%.1f MB", proc.memoryMB);
+                            ImGui::Text("%.1f MB", proc.memoryMB);
                         } else {
                             ImGui::Text("%.1f MB", proc.memoryMB);
                         }
@@ -157,7 +191,7 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
 
                 // Summary footer
                 ImGui::Separator();
-                ImGui::Text("Processes: %zu  |  Overall CPU: %.1f%%  |  Physical Memory: %d MB / %d MB", 
+                ImGui::Text("Simulated: %zu processes | CPU %.1f%% | RAM %d / %d MB",
                     processes.size(), 
                     ctx.getTotalCpuUsage(), 
                     static_cast<int>(ctx.getTotalMemoryMB()), 
@@ -171,10 +205,9 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                 ImGui::Spacing();
 
                 // CPU Section
-                ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "CPU Utilization History (60 Seconds)");
-                ImGui::Text("Processor: %s", ctx.cpuModel.c_str());
-                ImGui::Text("Current Load: %.1f%%  |  Speed: 733 MHz  |  Sockets: 1  |  Cores: 1  |  Threads: %zu", 
-                    ctx.getTotalCpuUsage(), ctx.getProcesses().size() * 4);
+                ImGui::Text("Simulated CPU Utilization (60 Seconds)");
+                ImGui::TextWrapped("Simulated processor: %s", ctx.cpuModel.c_str());
+                ImGui::Text("Load: %.1f%% | Simulated tasks: %zu | Samples: 1/sec", ctx.getTotalCpuUsage(), ctx.getProcesses().size());
 
                 ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.85f, 0.4f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.08f, 0.12f, 1.0f));
@@ -187,8 +220,8 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                 ImGui::Spacing();
 
                 // Memory Section
-                ImGui::TextColored(ImVec4(0.85f, 0.5f, 1.0f, 1.0f), "Memory Usage History");
-                ImGui::Text("Used: %d MB  |  Available: %d MB  |  Total Capacity: %d MB (%.1f%%)",
+                ImGui::Text("Simulated Memory Usage History");
+                ImGui::TextWrapped("Used: %d MB  |  Available: %d MB  |  Total Capacity: %d MB (%.1f%%)",
                     static_cast<int>(ctx.getTotalMemoryMB()),
                     static_cast<int>(ctx.getMaxMemoryMB() - ctx.getTotalMemoryMB()),
                     static_cast<int>(ctx.getMaxMemoryMB()),
@@ -197,7 +230,7 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
                 ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.85f, 0.4f, 1.0f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.08f, 0.12f, 1.0f));
                 ImGui::PlotLines("##RAM_Graph", ctx.getMemoryHistory(), ctx.getHistoryCapacity(), 
-                    0, nullptr, 0.0f, 4096.0f, ImVec2(-1.0f, 110.0f));
+                    0, nullptr, 0.0f, ctx.getMaxMemoryMB(), ImVec2(-1.0f, 110.0f));
                 ImGui::PopStyleColor(2);
 
                 ImGui::EndTabItem();
@@ -206,24 +239,24 @@ void TaskManagerWindow::render(SystemContext& ctx, float deltaTime) {
             // TAB 3: SYSTEM SUMMARY
             if (ImGui::BeginTabItem("System Summary")) {
                 ImGui::Spacing();
-                ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "CSOPESY OS Kernel Diagnostics");
+                ImGui::Text("CSOPESY simulated kernel diagnostics");
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                ImGui::Text("Operating System : %s", ctx.osVersion.c_str());
-                ImGui::Text("Kernel Build     : %s", ctx.kernelVersion.c_str());
-                ImGui::Text("Release Build    : %s", ctx.buildNumber.c_str());
-                ImGui::Text("Scheduler Policy : Multi-Level Feedback Queue (MLFQ) - Quantum 20ms");
-                ImGui::Text("Virtual Memory   : Two-level Paging with Demand Paging Enabled");
-                ImGui::Text("IPC Subsystem    : Posix Shared Memory & Message Queues");
-                ImGui::Text("Compositor       : OpenGL 3.3 Core Profile / Dear ImGui reactive pipeline");
-                ImGui::Text("Total Uptime     : %s", ctx.getUptimeString().c_str());
+                ImGui::TextWrapped("Operating System : %s", ctx.osVersion.c_str());
+                ImGui::TextWrapped("Kernel Build     : %s", ctx.kernelVersion.c_str());
+                ImGui::TextWrapped("Release Build    : %s", ctx.buildNumber.c_str());
+                ImGui::TextWrapped("Scheduler model : MLFQ / 20 ms quantum (illustrative; no scheduler runs)");
+                ImGui::TextWrapped("Memory model : Paging is illustrative; RAM statistics are simulated");
+                ImGui::TextWrapped("IPC model : Shared memory and queues are illustrative; no IPC runs");
+                ImGui::TextWrapped("Compositor : OpenGL 3.3 / Dear ImGui immediate-mode windows");
+                ImGui::TextWrapped("Total Uptime : %s", ctx.getUptimeString().c_str());
 
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                if (ImGui::Button("Spawn Benchmark Process", ImVec2(200, 30))) {
+                if (ImGui::Button("Spawn Simulated Task", ImVec2(200, 30))) {
                     ctx.spawnProcess("bench_worker.exe", 14.5f, 128.0f);
                 }
 

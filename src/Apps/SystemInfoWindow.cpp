@@ -1,4 +1,5 @@
 #include "SystemInfoWindow.h"
+#include "../Desktop/UiHelpers.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -7,6 +8,9 @@ namespace OS {
 
 void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
     ImGuiStyle& style = ImGui::GetStyle();
+    // Start every selection from the same complete palette and geometry.
+    style = ImGuiStyle();
+    ImGui::StyleColorsDark(&style);
     ImVec4* colors = style.Colors;
 
     if (mode == ThemeMode::CYBER_DARK) {
@@ -19,7 +23,7 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         style.WindowBorderSize = 1.0f;
 
         colors[ImGuiCol_Text]                  = ImVec4(0.92f, 0.94f, 0.96f, 1.00f);
-        colors[ImGuiCol_TextDisabled]          = ImVec4(0.50f, 0.55f, 0.65f, 1.00f);
+        colors[ImGuiCol_TextDisabled]          = ImVec4(0.64f, 0.69f, 0.77f, 1.00f);
         colors[ImGuiCol_WindowBg]              = ImVec4(0.09f, 0.12f, 0.18f, 0.96f);
         colors[ImGuiCol_ChildBg]               = ImVec4(0.07f, 0.09f, 0.14f, 1.00f);
         colors[ImGuiCol_PopupBg]               = ImVec4(0.10f, 0.13f, 0.20f, 0.98f);
@@ -49,7 +53,7 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         style.WindowBorderSize = 2.0f;
 
         colors[ImGuiCol_Text]                  = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
-        colors[ImGuiCol_TextDisabled]          = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+        colors[ImGuiCol_TextDisabled]          = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
         colors[ImGuiCol_WindowBg]              = ImVec4(0.75f, 0.75f, 0.75f, 1.00f);
         colors[ImGuiCol_ChildBg]               = ImVec4(0.85f, 0.85f, 0.85f, 1.00f);
         colors[ImGuiCol_PopupBg]               = ImVec4(0.75f, 0.75f, 0.75f, 1.00f);
@@ -62,9 +66,12 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         colors[ImGuiCol_Button]                = ImVec4(0.75f, 0.75f, 0.75f, 1.00f);
         colors[ImGuiCol_ButtonHovered]         = ImVec4(0.85f, 0.85f, 0.85f, 1.00f);
         colors[ImGuiCol_ButtonActive]          = ImVec4(0.65f, 0.65f, 0.65f, 1.00f);
-        colors[ImGuiCol_Header]                = ImVec4(0.00f, 0.00f, 0.50f, 0.80f);
-        colors[ImGuiCol_HeaderHovered]         = ImVec4(0.10f, 0.10f, 0.60f, 0.90f);
-        colors[ImGuiCol_HeaderActive]          = ImVec4(0.00f, 0.00f, 0.40f, 1.00f);
+        colors[ImGuiCol_TitleBg]               = ImVec4(0.65f, 0.65f, 0.65f, 1.00f);
+        colors[ImGuiCol_TitleBgActive]         = ImVec4(0.55f, 0.68f, 0.82f, 1.00f);
+        colors[ImGuiCol_TitleBgCollapsed]      = colors[ImGuiCol_TitleBg];
+        colors[ImGuiCol_Header]                = ImVec4(0.55f, 0.65f, 0.80f, 1.00f);
+        colors[ImGuiCol_HeaderHovered]         = ImVec4(0.65f, 0.75f, 0.90f, 1.00f);
+        colors[ImGuiCol_HeaderActive]          = ImVec4(0.50f, 0.60f, 0.80f, 1.00f);
         colors[ImGuiCol_Tab]                   = ImVec4(0.65f, 0.65f, 0.65f, 1.00f);
         colors[ImGuiCol_TabHovered]            = ImVec4(0.80f, 0.80f, 0.80f, 1.00f);
         colors[ImGuiCol_TabActive]             = ImVec4(0.75f, 0.75f, 0.75f, 1.00f);
@@ -75,7 +82,7 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         style.WindowBorderSize = 1.0f;
 
         colors[ImGuiCol_Text]                  = ImVec4(1.00f, 0.72f, 0.10f, 1.00f);
-        colors[ImGuiCol_TextDisabled]          = ImVec4(0.60f, 0.42f, 0.05f, 1.00f);
+        colors[ImGuiCol_TextDisabled]          = ImVec4(0.78f, 0.57f, 0.16f, 1.00f);
         colors[ImGuiCol_WindowBg]              = ImVec4(0.08f, 0.05f, 0.01f, 0.98f);
         colors[ImGuiCol_ChildBg]               = ImVec4(0.05f, 0.03f, 0.00f, 1.00f);
         colors[ImGuiCol_PopupBg]               = ImVec4(0.10f, 0.06f, 0.01f, 0.98f);
@@ -92,7 +99,7 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         style.WindowBorderSize = 1.0f;
 
         colors[ImGuiCol_Text]                  = ImVec4(0.10f, 1.00f, 0.30f, 1.00f);
-        colors[ImGuiCol_TextDisabled]          = ImVec4(0.05f, 0.50f, 0.15f, 1.00f);
+        colors[ImGuiCol_TextDisabled]          = ImVec4(0.12f, 0.68f, 0.28f, 1.00f);
         colors[ImGuiCol_WindowBg]              = ImVec4(0.02f, 0.06f, 0.03f, 0.98f);
         colors[ImGuiCol_ChildBg]               = ImVec4(0.01f, 0.04f, 0.02f, 1.00f);
         colors[ImGuiCol_PopupBg]               = ImVec4(0.03f, 0.08f, 0.04f, 0.98f);
@@ -104,58 +111,83 @@ void SystemInfoWindow::applyThemeToImGui(ThemeMode mode) {
         colors[ImGuiCol_ButtonHovered]         = ImVec4(0.10f, 0.40f, 0.15f, 1.00f);
         colors[ImGuiCol_ButtonActive]          = ImVec4(0.08f, 0.30f, 0.12f, 1.00f);
     }
+
+    if (mode == ThemeMode::RETRO_AMBER || mode == ThemeMode::MATRIX_GREEN) {
+        style.PopupRounding = style.ScrollbarRounding = 4.0f;
+        style.GrabRounding = style.TabRounding = 2.0f;
+        colors[ImGuiCol_FrameBgHovered] = colors[ImGuiCol_ButtonHovered];
+        colors[ImGuiCol_FrameBgActive] = colors[ImGuiCol_ButtonActive];
+        colors[ImGuiCol_Header] = colors[ImGuiCol_Button];
+        colors[ImGuiCol_HeaderHovered] = colors[ImGuiCol_ButtonHovered];
+        colors[ImGuiCol_HeaderActive] = colors[ImGuiCol_ButtonActive];
+        colors[ImGuiCol_Tab] = colors[ImGuiCol_TitleBg];
+        colors[ImGuiCol_TabHovered] = colors[ImGuiCol_ButtonHovered];
+        colors[ImGuiCol_TabSelected] = colors[ImGuiCol_ButtonActive];
+    }
+    const ImVec4 accent = mode == ThemeMode::CLASSIC_98 ? ImVec4(.1f, .25f, .55f, 1)
+        : mode == ThemeMode::CYBER_DARK ? ImVec4(.35f, .85f, 1, 1) : colors[ImGuiCol_Text];
+    colors[ImGuiCol_CheckMark] = colors[ImGuiCol_SliderGrab] = colors[ImGuiCol_NavCursor] = accent;
+    colors[ImGuiCol_SliderGrabActive] = accent;
+    colors[ImGuiCol_Separator] = colors[ImGuiCol_Border];
+    colors[ImGuiCol_SeparatorHovered] = colors[ImGuiCol_SeparatorActive] = accent;
+    colors[ImGuiCol_ResizeGripHovered] = colors[ImGuiCol_ResizeGripActive] = accent;
+    colors[ImGuiCol_ScrollbarGrab] = colors[ImGuiCol_Button];
+    colors[ImGuiCol_ScrollbarGrabHovered] = colors[ImGuiCol_ButtonHovered];
+    colors[ImGuiCol_ScrollbarGrabActive] = colors[ImGuiCol_ButtonActive];
+    colors[ImGuiCol_TabDimmed] = colors[ImGuiCol_Tab];
+    colors[ImGuiCol_TabDimmedSelected] = colors[ImGuiCol_TabSelected];
+    colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_TabDimmedSelectedOverline] = accent;
 }
 
 void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
     (void)deltaTime;
     if (!ctx.showSystemInfo) return;
 
-    ImGui::SetNextWindowSize(ImVec2(620, 480), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(220, 120), ImGuiCond_FirstUseEver);
+    Ui::prepareAppWindow("System Settings & Hardware Diagnostics###SYSINFO_WND", ImVec2(620, 480), ImVec2(220, 120));
 
     if (ImGui::Begin("System Settings & Hardware Diagnostics###SYSINFO_WND", &ctx.showSystemInfo)) {
         if (ImGui::BeginTabBar("SysInfoTabBar")) {
             // TAB 1: SYSTEM & HARDWARE
             if (ImGui::BeginTabItem("System Overview")) {
                 ImGui::Spacing();
-                ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "CSOPESY Workstation OS v2.4");
-                ImGui::TextDisabled("Designed for Operating Systems Architecture Simulation");
+                ImGui::Text("CSOPESY Workstation OS v2.4");
+                ImGui::TextWrapped("Simulated OS hardware; host graphics information below is live.");
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                ImGui::Text("Architecture : x86_64 Compatible Multi-Tasking OS");
-                ImGui::Text("Microkernel  : CSOPESY-x86 SMP Hybrid Core (v2.4.19)");
-                ImGui::Text("Build ID     : %s", ctx.buildNumber.c_str());
-                ImGui::Text("System Uptime: %s", ctx.getUptimeString().c_str());
-
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-
-                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Processor & Memory Specifications:");
-                ImGui::Text("CPU Model    : %s", ctx.cpuModel.c_str());
-                ImGui::Text("Clock Speed  : 733 MHz FSB 133MHz");
-                ImGui::Text("L1 Cache     : 32 KB Instruction + Data");
-                ImGui::Text("L2 Cache     : 256 KB On-die ATC");
-                ImGui::Text("Installed RAM: 8,192 MB Virtual RAM (256 MB Simulated Physical)");
+                ImGui::TextWrapped("Architecture : Simulated x86 desktop environment");
+                ImGui::TextWrapped("Kernel model : CSOPESY-x86 SMP Hybrid Core (v2.4.19), simulated");
+                ImGui::TextWrapped("Build ID     : %s", ctx.buildNumber.c_str());
+                ImGui::TextWrapped("System Uptime: %s", ctx.getUptimeString().c_str());
 
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Host Graphics Pipeline (OpenGL Context):");
+                ImGui::Text("Simulated processor & memory:");
+                ImGui::TextWrapped("CPU Model    : %s", ctx.cpuModel.c_str());
+                ImGui::TextWrapped("Clock Speed  : 733 MHz FSB 133MHz");
+                ImGui::TextWrapped("L1 Cache     : 32 KB Instruction + Data");
+                ImGui::TextWrapped("L2 Cache     : 256 KB On-die ATC");
+                ImGui::TextWrapped("Memory model : 8,192 MB simulated RAM; BIOS display: 256 MB");
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                ImGui::Text("Live host graphics (OpenGL context):");
                 
-                const char* glVendor = (const char*)glGetString(GL_VENDOR);
-                const char* glRenderer = (const char*)glGetString(GL_RENDERER);
-                const char* glVersion = (const char*)glGetString(GL_VERSION);
-                const char* glSlVersion = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+                const char* glVendor = glGetString ? reinterpret_cast<const char*>(glGetString(GL_VENDOR)) : nullptr;
+                const char* glRenderer = glGetString ? reinterpret_cast<const char*>(glGetString(GL_RENDERER)) : nullptr;
+                const char* glVersion = glGetString ? reinterpret_cast<const char*>(glGetString(GL_VERSION)) : nullptr;
+                const char* glSlVersion = glGetString ? reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)) : nullptr;
 
-                ImGui::Text("GPU Renderer : %s", glRenderer ? glRenderer : "Unknown GPU");
-                ImGui::Text("GPU Vendor   : %s", glVendor ? glVendor : "Unknown Vendor");
-                ImGui::Text("OpenGL Vers. : %s", glVersion ? glVersion : "Unknown GL");
-                ImGui::Text("GLSL Vers.   : %s", glSlVersion ? glSlVersion : "Unknown GLSL");
-                ImGui::Text("Dear ImGui   : v%s", ImGui::GetVersion());
-                ImGui::Text("GLFW Library : %s", glfwGetVersionString());
+                ImGui::TextWrapped("GPU Renderer : %s", glRenderer ? glRenderer : "Unknown GPU");
+                ImGui::TextWrapped("GPU Vendor   : %s", glVendor ? glVendor : "Unknown Vendor");
+                ImGui::TextWrapped("OpenGL Vers. : %s", glVersion ? glVersion : "Unknown GL");
+                ImGui::TextWrapped("GLSL Vers.   : %s", glSlVersion ? glSlVersion : "Unknown GLSL");
+                ImGui::TextWrapped("Dear ImGui   : v%s", ImGui::GetVersion());
+                ImGui::TextWrapped("GLFW Library : %s", glfwGetVersionString());
 
                 ImGui::EndTabItem();
             }
@@ -163,7 +195,7 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
             // TAB 2: APPEARANCE & THEMES
             if (ImGui::BeginTabItem("Appearance")) {
                 ImGui::Spacing();
-                ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "Desktop Shell Theme Manager");
+                ImGui::Text("Desktop Shell Theme Manager");
                 ImGui::TextDisabled("Select an operating system appearance theme:");
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -171,7 +203,6 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
                 auto themeRadioButton = [&](const char* name, ThemeMode mode) {
                     if (ImGui::RadioButton(name, ctx.getTheme() == mode)) {
                         ctx.setTheme(mode);
-                        applyThemeToImGui(mode);
                     }
                 };
 
@@ -184,9 +215,9 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                ImGui::Text("Performance & Rendering:");
-                ImGui::Text("Current FPS : %.1f FPS (%.2f ms/frame)", 
-                    ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+                ImGui::TextWrapped("Performance & Rendering:");
+                ImGui::TextWrapped("Current FPS : %.1f FPS (%.2f ms/frame)",
+                    ImGui::GetIO().Framerate, ImGui::GetIO().Framerate > 0.0f ? 1000.0f / ImGui::GetIO().Framerate : 0.0f);
 
                 static bool vsync = true;
                 if (ImGui::Checkbox("Enable V-Sync (Vertical Synchronization)", &vsync)) {
@@ -199,8 +230,8 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
             // TAB 3: ABOUT CSOPESY
             if (ImGui::BeginTabItem("About")) {
                 ImGui::Spacing();
-                ImGui::TextColored(ImVec4(0.4f, 0.85f, 1.0f, 1.0f), "CSOPESY Desktop OS Mock-up Emulator");
-                ImGui::Text("C++ Systems Programming & Graphics Final Project");
+                ImGui::Text("CSOPESY Desktop OS Mock-up Emulator");
+                ImGui::TextWrapped("C++ Systems Programming & Graphics Final Project");
                 ImGui::Separator();
                 ImGui::Spacing();
                 ImGui::TextWrapped(
@@ -210,7 +241,7 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
                     " - Language: C++17 / C++20\n"
                     " - Graphics: OpenGL 3.3 Core Profile + GLFW\n"
                     " - Extension Loader: GLAD\n"
-                    " - GUI Compositor: Dear ImGui (Docking / Reactive UI pipeline)\n\n"
+                    " - GUI Compositor: Dear ImGui immediate-mode windows\n\n"
                     "Developed for Operating Systems Engineering (CSOPESY)."
                 );
                 ImGui::EndTabItem();

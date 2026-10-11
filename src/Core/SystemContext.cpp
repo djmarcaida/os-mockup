@@ -4,35 +4,110 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <cctype>
+#include <functional>
+#include <limits>
 
 namespace OS {
+
+namespace {
+
+char toLowerChar(unsigned char value) {
+    return static_cast<char>(std::tolower(value));
+}
+
+bool equalsIgnoreCase(const std::string& left, const std::string& right) {
+    if (left.size() != right.size()) return false;
+    return std::equal(left.begin(), left.end(), right.begin(), [](unsigned char a, unsigned char b) {
+        return std::tolower(a) == std::tolower(b);
+    });
+}
+
+std::string currentDateIso() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t timeNow = std::chrono::system_clock::to_time_t(now);
+    std::tm tmNow{};
+#if defined(_WIN32)
+    localtime_s(&tmNow, &timeNow);
+#else
+    localtime_r(&timeNow, &tmNow);
+#endif
+    std::ostringstream out;
+    out << std::setfill('0') << std::setw(4) << (1900 + tmNow.tm_year) << '-'
+        << std::setw(2) << (tmNow.tm_mon + 1) << '-'
+        << std::setw(2) << tmNow.tm_mday;
+    return out.str();
+}
+
+template <typename FileType>
+FileType* resolveVirtualPath(FileType* root, FileType* currentDirectory,
+                             const std::string& currentDirectoryPath, const std::string& path) {
+    if (!root || !currentDirectory || path.empty()) return nullptr;
+
+    std::string normalized = path;
+    std::replace(normalized.begin(), normalized.end(), '/', '\\');
+
+    std::string combinedPath;
+    const bool hasDrive = normalized.size() >= 2 && normalized[1] == ':';
+    if (hasDrive) {
+        if (std::tolower(static_cast<unsigned char>(normalized[0])) != 'c') return nullptr;
+        const std::string driveRelativePath = normalized.substr(2);
+        if (driveRelativePath.empty()) return root;
+        if (driveRelativePath[0] == '\\') {
+            combinedPath = driveRelativePath;
+        } else {
+            combinedPath = currentDirectoryPath.substr(2) + "\\" + driveRelativePath;
+        }
+    } else if (normalized[0] == '\\') {
+        combinedPath = normalized;
+    } else {
+        combinedPath = currentDirectoryPath.substr(2) + "\\" + normalized;
+    }
+
+    std::vector<std::string> components;
+    std::stringstream pathStream(combinedPath);
+    std::string component;
+    while (std::getline(pathStream, component, '\\')) {
+        if (!component.empty()) components.push_back(component);
+    }
+
+    std::vector<FileType*> directoryStack{root};
+    for (size_t index = 0; index < components.size(); ++index) {
+        const std::string& part = components[index];
+        if (part == ".") continue;
+        if (part == "..") {
+            if (directoryStack.size() > 1) directoryStack.pop_back();
+            continue;
+        }
+
+        FileType* parent = directoryStack.back();
+        auto found = std::find_if(parent->children.begin(), parent->children.end(), [&part](const auto& child) {
+            return equalsIgnoreCase(child.name, part);
+        });
+        if (found == parent->children.end()) return nullptr;
+
+        const bool isLast = index + 1 == components.size();
+        if (!found->isDirectory) {
+            return isLast ? &*found : nullptr;
+        }
+        directoryStack.push_back(&*found);
+    }
+    return directoryStack.back();
+}
+
+} // namespace
 
 SystemContext::SystemContext() {
     m_cpuHistory.resize(60, 5.0f);
     m_memoryHistory.resize(60, 1420.0f);
 
     initProcesses();
+    refreshProcessMetrics();
     initVFS();
 
-    // Default Notepad file
-    notepadTitle = "welcome.txt - Notepad";
-    notepadBuffer = 
-        "===============================================\n"
-        "       CSOPESY WORKSTATION OS v2.4\n"
-        "===============================================\n"
-        "Welcome to the CSOPESY OS Desktop Environment!\n"
-        "\n"
-        "Key Highlights & Features:\n"
-        " - BIOS / POST 90s boot sequence emulation\n"
-        " - Animated Boot Splash Screen with ASCII Logo\n"
-        " - Fullscreen Desktop Shell with custom gradient\n"
-        " - Dynamic Windows Task Manager with real-time graphs\n"
-        " - Virtual File Explorer with file reader\n"
-        " - Interactive retro Terminal Shell ('csopesy_sh')\n"
-        " - Multi-theme switcher (Cyber Dark, Win98, Amber, Matrix)\n"
-        " - Graceful shutdown and reboot controls\n"
-        "\n"
-        "Tip: Check the Taskbar or Desktop icons to launch apps!\n";
+    // Bind the initial editor to its actual virtual source file.
+    openFileInNotepad(findFileByPath("C:\\CSOPESY\\welcome.txt"));
+    showNotepad = false;
 
     // Initialize terminal greeting
     m_terminalLines.push_back({"CSOPESY Command Prompt [Version 2.4.19-release]", 0xFF44FF44, false});
@@ -55,6 +130,8 @@ void SystemContext::reboot() {
     showNotepad = false;
     showStartMenu = false;
     showPowerDialog = false;
+    showVolumePopup = false;
+    showNetworkPopup = false;
 }
 
 void SystemContext::requestShutdown() {
@@ -153,52 +230,93 @@ void SystemContext::initProcesses() {
 }
 
 void SystemContext::updateProcesses(float deltaTime) {
-    static float timer = 0.0f;
-    timer += deltaTime;
-    if (timer < 0.25f) return;
-    timer = 0.0f;
+    if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) return;
+    m_processTimer += deltaTime;
+    if (m_processTimer < 0.25f) return;
+    m_processTimer = std::fmod(m_processTimer, 0.25f);
 
     static std::mt19937 rng(1337);
     std::uniform_real_distribution<float> jitter(-0.8f, 0.8f);
     std::uniform_real_distribution<float> memJitter(-0.4f, 0.4f);
 
-    float activeCpuSum = 0.0f;
-    m_totalMemoryMB = 0.0f;
-
     for (auto& proc : m_processes) {
-        if (proc.name == "idle_process") continue;
+        if (proc.pid == 0) continue;
 
-        proc.cpuUsage = std::max(0.1f, std::min(45.0f, proc.baseCpu + jitter(rng)));
-        proc.memoryMB = std::max(5.0f, proc.baseMemoryMB + memJitter(rng));
-        proc.diskIOKB = std::max(0.0f, proc.diskIOKB + jitter(rng) * 2.0f);
-
-        activeCpuSum += proc.cpuUsage;
-        m_totalMemoryMB += proc.memoryMB;
+        const float baseCpu = std::isfinite(proc.baseCpu) ? std::max(0.0f, std::min(100.0f, proc.baseCpu)) : 0.0f;
+        const float baseMemory = std::isfinite(proc.baseMemoryMB) ? std::max(0.0f, std::min(m_maxMemoryMB, proc.baseMemoryMB)) : 0.0f;
+        const float diskIO = std::isfinite(proc.diskIOKB) ? proc.diskIOKB : 0.0f;
+        proc.cpuUsage = std::max(0.1f, std::min(45.0f, baseCpu + jitter(rng)));
+        proc.memoryMB = std::max(5.0f, std::min(m_maxMemoryMB, baseMemory + memJitter(rng)));
+        proc.diskIOKB = std::max(0.0f, diskIO + jitter(rng) * 2.0f);
     }
 
-    // Assign remaining percentage to idle_process
-    for (auto& proc : m_processes) {
-        if (proc.name == "idle_process") {
-            proc.cpuUsage = std::max(1.0f, 100.0f - activeCpuSum);
-            break;
-        }
-    }
-
-    m_totalCpuUsage = std::min(100.0f, activeCpuSum);
+    refreshProcessMetrics(true);
 }
 
 void SystemContext::updatePerformanceHistory(float deltaTime) {
+    if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) return;
     m_historyTimer += deltaTime;
-    if (m_historyTimer < 0.5f) return;
-    m_historyTimer = 0.0f;
+    if (!std::isfinite(m_historyTimer) || m_historyTimer < 1.0f) return;
 
-    if (!m_cpuHistory.empty()) {
-        m_cpuHistory.erase(m_cpuHistory.begin());
-        m_cpuHistory.push_back(m_totalCpuUsage);
+    const size_t capacity = std::max(m_cpuHistory.size(), m_memoryHistory.size());
+    if (capacity > 0 && m_historyTimer >= static_cast<float>(capacity)) {
+        std::fill(m_cpuHistory.begin(), m_cpuHistory.end(), m_totalCpuUsage);
+        std::fill(m_memoryHistory.begin(), m_memoryHistory.end(), m_totalMemoryMB);
+        m_historyTimer = std::fmod(m_historyTimer, 1.0f);
+        return;
     }
-    if (!m_memoryHistory.empty()) {
-        m_memoryHistory.erase(m_memoryHistory.begin());
-        m_memoryHistory.push_back(m_totalMemoryMB);
+
+    const size_t samples = static_cast<size_t>(m_historyTimer);
+    m_historyTimer -= static_cast<float>(samples);
+    const auto appendSamples = [samples](std::vector<float>& history, float value) {
+        if (history.empty()) return;
+        if (samples >= history.size()) {
+            std::fill(history.begin(), history.end(), value);
+            return;
+        }
+        history.erase(history.begin(), history.begin() + static_cast<std::ptrdiff_t>(samples));
+        history.insert(history.end(), samples, value);
+    };
+    appendSamples(m_cpuHistory, m_totalCpuUsage);
+    appendSamples(m_memoryHistory, m_totalMemoryMB);
+}
+
+void SystemContext::refreshProcessMetrics(bool updateIdleProcess) {
+    double activeCpuSum = 0.0;
+    double totalMemory = 0.0;
+    ProcessInfo* idleProcess = nullptr;
+
+    for (auto& proc : m_processes) {
+        proc.cpuUsage = std::isfinite(proc.cpuUsage) ? std::max(0.0f, std::min(100.0f, proc.cpuUsage)) : 0.0f;
+        proc.memoryMB = std::isfinite(proc.memoryMB) ? std::max(0.0f, std::min(m_maxMemoryMB, proc.memoryMB)) : 0.0f;
+        proc.diskIOKB = std::isfinite(proc.diskIOKB) ? std::max(0.0f, proc.diskIOKB) : 0.0f;
+        if (proc.pid == 0) {
+            idleProcess = &proc;
+            totalMemory += proc.memoryMB;
+            continue;
+        }
+        activeCpuSum += proc.cpuUsage;
+        totalMemory += proc.memoryMB;
+    }
+
+    if (activeCpuSum > 100.0) {
+        const float scale = static_cast<float>(100.0 / activeCpuSum);
+        for (auto& proc : m_processes) {
+            if (proc.pid != 0) proc.cpuUsage *= scale;
+        }
+        activeCpuSum = 100.0;
+    }
+
+    // Saturate the simulated workload while keeping table rows and totals consistent.
+    if (totalMemory > m_maxMemoryMB) {
+        const float scale = static_cast<float>(m_maxMemoryMB / totalMemory);
+        for (auto& proc : m_processes) proc.memoryMB *= scale;
+        totalMemory = m_maxMemoryMB;
+    }
+    m_totalCpuUsage = static_cast<float>(std::max(0.0, std::min(100.0, activeCpuSum)));
+    m_totalMemoryMB = static_cast<float>(totalMemory);
+    if (updateIdleProcess && idleProcess) {
+        idleProcess->cpuUsage = std::max(0.0f, 100.0f - m_totalCpuUsage);
     }
 }
 
@@ -219,23 +337,26 @@ bool SystemContext::killProcess(int pid, std::string& outMessage) {
 
     outMessage = "Successfully terminated process '" + it->name + "' (PID: " + std::to_string(pid) + ").";
     m_processes.erase(it);
+    refreshProcessMetrics(true);
     return true;
 }
 
 void SystemContext::spawnProcess(const std::string& name, float cpu, float mem) {
-    static int nextPid = 1024;
+    const float safeCpu = std::isfinite(cpu) ? std::max(0.0f, std::min(100.0f, cpu)) : 0.0f;
+    const float safeMemory = std::isfinite(mem) ? std::max(0.0f, std::min(m_maxMemoryMB, mem)) : 0.0f;
     ProcessInfo p;
-    p.pid = nextPid++;
+    p.pid = m_nextPid++;
     p.name = name;
     p.user = "admin";
-    p.baseCpu = cpu;
-    p.cpuUsage = cpu;
-    p.baseMemoryMB = mem;
-    p.memoryMB = mem;
+    p.baseCpu = safeCpu;
+    p.cpuUsage = safeCpu;
+    p.baseMemoryMB = safeMemory;
+    p.memoryMB = safeMemory;
     p.diskIOKB = 5.0f;
     p.status = "Running";
     p.isSystem = false;
     m_processes.push_back(p);
+    refreshProcessMetrics(true);
 }
 
 void SystemContext::initVFS() {
@@ -262,7 +383,8 @@ void SystemContext::initVFS() {
         " - Microkernel architecture simulation\n"
         " - OpenGL 3.3 accelerated Desktop Window Compositor\n"
         " - Dear ImGui reactive widget pipeline\n"
-        " - Multi-threaded process scheduler emulation\n";
+        " - Simulated process metrics and performance graphs\n";
+    welcomeTxt.sizeBytes = welcomeTxt.content.size();
     csopesyDir.children.push_back(welcomeTxt);
 
     VirtualFile kernelCfg;
@@ -368,69 +490,149 @@ void SystemContext::initVFS() {
 }
 
 bool SystemContext::navigateTo(const std::string& folderName) {
-    if (!m_currentDir) return false;
-    for (auto& item : m_currentDir->children) {
-        if (item.isDirectory && item.name == folderName) {
-            m_currentDir = &item;
-            if (m_currentDirPath.back() != '\\') m_currentDirPath += "\\";
-            m_currentDirPath += folderName;
-            return true;
-        }
-    }
-    return false;
+    const VirtualFile* directory = findFileByPath(folderName);
+    return directory && directory->isDirectory && navigateToDirectory(directory);
 }
 
-bool SystemContext::navigateUp() {
-    if (m_currentDirPath == "C:\\" || m_currentDirPath == "C:") {
-        return false;
-    }
+bool SystemContext::navigateToDirectory(const VirtualFile* directory) {
+    std::string canonicalPath;
+    if (!directory || !getCanonicalPath(directory, canonicalPath)) return false;
+    VirtualFile* resolvedDirectory = resolveVirtualPath(m_vfsRoot.get(), m_currentDir, m_currentDirPath, canonicalPath);
+    if (!resolvedDirectory || !resolvedDirectory->isDirectory) return false;
 
-    // Traverse from root to find parent
-    auto slashPos = m_currentDirPath.find_last_of('\\');
-    if (slashPos == std::string::npos || slashPos == 2) {
-        m_currentDir = m_vfsRoot.get();
-        m_currentDirPath = "C:\\";
-        return true;
-    }
-
-    std::string parentPath = m_currentDirPath.substr(0, slashPos);
-    // Parse parent path tokens
-    VirtualFile* walker = m_vfsRoot.get();
-    std::string rel = parentPath.substr(3); // Relative path after root drive
-    std::stringstream ss(rel);
-    std::string token;
-    while (std::getline(ss, token, '\\')) {
-        if (token.empty()) continue;
-        bool found = false;
-        for (auto& child : walker->children) {
-            if (child.isDirectory && child.name == token) {
-                walker = &child;
-                found = true;
-                break;
-            }
-        }
-        if (!found) break;
-    }
-    m_currentDir = walker;
-    m_currentDirPath = parentPath;
+    m_currentDir = resolvedDirectory;
+    m_currentDirPath = std::move(canonicalPath);
     return true;
 }
 
+bool SystemContext::navigateUp() {
+    if (!m_currentDir || m_currentDir == m_vfsRoot.get()) return false;
+    VirtualFile* parent = resolveVirtualPath(m_vfsRoot.get(), m_currentDir, m_currentDirPath, "..");
+    return parent && parent != m_currentDir && navigateToDirectory(parent);
+}
+
 const VirtualFile* SystemContext::findFileByPath(const std::string& path) const {
-    if (!m_currentDir) return nullptr;
-    for (const auto& item : m_currentDir->children) {
-        if (!item.isDirectory && item.name == path) {
-            return &item;
-        }
-    }
-    return nullptr;
+    return resolveVirtualPath(m_vfsRoot.get(), m_currentDir, m_currentDirPath, path);
+}
+
+bool SystemContext::getCanonicalPath(const VirtualFile* file, std::string& outPath) const {
+    if (!m_vfsRoot || !file) return false;
+
+    std::function<bool(const VirtualFile*, const std::string&)> findPath =
+        [&](const VirtualFile* current, const std::string& currentPath) {
+            if (current == file) {
+                outPath = currentPath;
+                return true;
+            }
+            for (const auto& child : current->children) {
+                const std::string childPath = current == m_vfsRoot.get()
+                    ? currentPath + child.name
+                    : currentPath + "\\" + child.name;
+                if (findPath(&child, childPath)) return true;
+            }
+            return false;
+        };
+
+    return findPath(m_vfsRoot.get(), "C:\\");
 }
 
 void SystemContext::openFileInNotepad(const std::string& title, const std::string& content) {
     notepadTitle = title + " - Notepad";
     notepadBuffer = content;
     notepadModified = false;
+    m_notepadFilePath.clear();
+    m_pendingNotepadFilePath.clear();
     showNotepad = true;
+}
+
+void SystemContext::openFileInNotepad(const VirtualFile* file) {
+    std::string canonicalPath;
+    if (!file || !getCanonicalPath(file, canonicalPath) || file->isDirectory) return;
+
+    showNotepad = true;
+    if (notepadModified) {
+        // Reopening the current source must not erase its unsaved buffer.
+        if (canonicalPath != m_notepadFilePath) m_pendingNotepadFilePath = std::move(canonicalPath);
+        return;
+    }
+    notepadTitle = file->name + " - Notepad";
+    notepadBuffer = file->content;
+    notepadModified = false;
+    m_notepadFilePath = std::move(canonicalPath);
+    m_pendingNotepadFilePath.clear();
+}
+
+bool SystemContext::confirmNotepadOpen() {
+    const VirtualFile* target = findFileByPath(m_pendingNotepadFilePath);
+    if (!target || target->isDirectory) return false;
+    // Resolve the path again after Save, which may reallocate directory children.
+    notepadTitle = target->name + " - Notepad";
+    notepadBuffer = target->content;
+    notepadModified = false;
+    m_notepadFilePath = std::move(m_pendingNotepadFilePath);
+    m_pendingNotepadFilePath.clear();
+    showNotepad = true;
+    return true;
+}
+
+void SystemContext::cancelNotepadOpen() {
+    m_pendingNotepadFilePath.clear();
+}
+
+void SystemContext::newNotepadDocument() {
+    notepadTitle = "Untitled - Notepad";
+    notepadBuffer.clear();
+    notepadModified = false;
+    m_notepadFilePath.clear();
+    m_pendingNotepadFilePath.clear();
+    showNotepad = true;
+}
+
+bool SystemContext::saveNotepadDocument(std::string& outMessage) {
+    if (!m_vfsRoot || !m_currentDir || !m_currentDir->isDirectory) {
+        outMessage = "Save failed: current directory is unavailable.";
+        return false;
+    }
+
+    const std::string modifiedDate = currentDateIso();
+    if (!m_notepadFilePath.empty()) {
+        VirtualFile* source = resolveVirtualPath(m_vfsRoot.get(), m_currentDir, m_currentDirPath, m_notepadFilePath);
+        if (!source || source->isDirectory) {
+            outMessage = "Save failed: source file no longer exists.";
+            return false;
+        }
+        if (!notepadModified) {
+            outMessage = "No changes to save.";
+            return true;
+        }
+
+        source->content = notepadBuffer;
+        source->sizeBytes = notepadBuffer.size();
+        source->modifiedDate = modifiedDate;
+        notepadModified = false;
+        outMessage = "Saved changes to " + m_notepadFilePath + ".";
+        return true;
+    }
+
+    size_t untitledNumber = 1;
+    std::string fileName;
+    while (true) {
+        fileName = "Untitled-" + std::to_string(untitledNumber) + ".txt";
+        const auto existing = std::find_if(m_currentDir->children.begin(), m_currentDir->children.end(), [&fileName](const VirtualFile& item) {
+            return equalsIgnoreCase(item.name, fileName);
+        });
+        if (existing == m_currentDir->children.end()) break;
+        ++untitledNumber;
+    }
+
+    m_currentDir->children.emplace_back(fileName, false, notepadBuffer.size(), modifiedDate, notepadBuffer);
+    m_notepadFilePath = m_currentDirPath == "C:\\"
+        ? m_currentDirPath + fileName
+        : m_currentDirPath + "\\" + fileName;
+    notepadTitle = fileName + " - Notepad";
+    notepadModified = false;
+    outMessage = "Saved new document as " + m_notepadFilePath + ".";
+    return true;
 }
 
 void SystemContext::addTerminalLine(const std::string& text, uint32_t color, bool isCmd) {
@@ -445,7 +647,9 @@ void SystemContext::clearTerminal() {
 }
 
 void SystemContext::executeTerminalCommand(const std::string& commandLine) {
-    if (commandLine.empty()) return;
+    if (commandLine.empty() || std::all_of(commandLine.begin(), commandLine.end(), [](unsigned char c) {
+            return std::isspace(c) != 0;
+        })) return;
 
     addTerminalLine("admin@csopesy:~$ " + commandLine, 0xFFFFFFFF, true);
     m_commandHistory.push_back(commandLine);
@@ -453,7 +657,7 @@ void SystemContext::executeTerminalCommand(const std::string& commandLine) {
     std::stringstream ss(commandLine);
     std::string cmd;
     ss >> cmd;
-    std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+    std::transform(cmd.begin(), cmd.end(), cmd.begin(), toLowerChar);
 
     if (cmd == "help") {
         addTerminalLine("Available CSOPESY Shell Commands:", 0xFFFFFF55);
@@ -531,7 +735,9 @@ void SystemContext::executeTerminalCommand(const std::string& commandLine) {
         std::string filename;
         if (ss >> filename) {
             const VirtualFile* file = findFileByPath(filename);
-            if (file) {
+            if (file && file->isDirectory) {
+                addTerminalLine("Cannot read a directory: " + filename, 0xFFFF4444);
+            } else if (file) {
                 addTerminalLine("--- " + file->name + " ---", 0xFFFFFF88);
                 std::stringstream fileSS(file->content);
                 std::string line;
