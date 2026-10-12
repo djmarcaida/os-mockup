@@ -6,7 +6,10 @@
 #include <backends/imgui_impl_opengl3.h>
 
 #include "Core/SystemContext.h"
+#include "Core/AssetPaths.h"
 #include "Boot/BootScreens.h"
+#include "Boot/BootAudio.h"
+#include "Desktop/WallpaperSlideshow.h"
 #include "Compositor/WindowCompositor.h"
 #include "Apps/SystemInfoWindow.h"
 
@@ -30,7 +33,6 @@ static void glfwCloseCallback(GLFWwindow* window) {
 
 int main(int argc, char** argv) {
     (void)argc;
-    (void)argv;
     // 1. Setup GLFW error callback
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) {
@@ -95,6 +97,11 @@ int main(int argc, char** argv) {
     glfwSetWindowUserPointer(window, &sysContext);
     glfwSetWindowCloseCallback(window, glfwCloseCallback);
 
+    const auto assetDirectory = OS::getAssetDirectory(argv[0]);
+    OS::WallpaperSlideshow::initialize(assetDirectory / "wallpapers");
+    OS::BootAudio bootAudio;
+    bootAudio.initialize(assetDirectory / "audio" / "boot.mp3");
+
     double lastTime = glfwGetTime();
 
     // 8. Main Emulation Loop
@@ -130,6 +137,12 @@ int main(int argc, char** argv) {
             OS::WindowCompositor::render(sysContext, deltaTime);
         }
 
+        // Handle keyboard skips, restart, and volume changes from this frame's UI.
+        bootAudio.update(sysContext.getState(), sysContext.volumeLevel, sysContext.isMuted);
+        if (sysContext.getState() == OS::BootState::BIOS_POST) {
+            OS::WallpaperSlideshow::reset();
+        }
+
         // Rendering Pipeline
         ImGui::Render();
         int display_w, display_h;
@@ -143,6 +156,8 @@ int main(int argc, char** argv) {
     }
 
     // 9. Graceful Teardown & Resource Cleanup
+    bootAudio.shutdown();
+    OS::WallpaperSlideshow::shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

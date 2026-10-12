@@ -2,7 +2,7 @@
 
 A desktop-style operating system mock-up and graphics emulator written in **C++17** using **GLFW**, **OpenGL 3.3 Core**, **GLAD**, and **Dear ImGui**.
 
-The emulator boots through a 1990s-style Megatrends BIOS/POST screen and animated splash before opening an interactive desktop. Its processes, virtual files, hardware specifications, audio, and network state are simulated; the clock and OpenGL renderer information come from the host.
+The emulator boots through a 1990s-style Megatrends BIOS/POST screen and animated splash before opening an interactive desktop with a looping portrait wallpaper slideshow. Its processes, virtual files, hardware specifications, and network state are simulated; the clock and OpenGL renderer information come from the host. The supplied startup MP3 plays through the host's audio output.
 
 ---
 
@@ -13,6 +13,8 @@ The emulator boots through a 1990s-style Megatrends BIOS/POST screen and animate
 - **Windowing & Input**: GLFW 3.4 (fetched automatically via CMake `FetchContent`)
 - **OpenGL Loader**: GLAD (OpenGL 3.3 Core loader bundled in `external/glad`)
 - **Immediate-Mode UI & Compositor**: Dear ImGui v1.91.8 (using `imgui_impl_glfw` and `imgui_impl_opengl3` backends)
+- **Image Loading**: stb_image (JPEG/PNG decoder bundled in `external/stb`)
+- **Audio Playback**: miniaudio v0.11.21 (MP3 playback bundled in `external/miniaudio`)
 - **Build System**: Cross-platform CMake (v3.20+)
 
 ---
@@ -54,11 +56,14 @@ The emulator implements a sequential boot/runtime state machine:
   - Simulated kernel threads and IPC scheduler startup
   - OpenGL 3.3 window compositor mount
 - Smooth transition into the interactive desktop shell.
+- Plays `assets/audio/boot.mp3` once on entering the splash, including after Restart. Skipping directly to the desktop still triggers it once. Playback runs without blocking the frame loop.
 
 ### 3. State 3: Desktop Shell
 - **Desktop Background (Base Layer)**:
   - Fullscreen, borderless, non-collapsible ImGui background window.
-  - Multi-color theme gradient rendered directly via ImGui DrawList with subtle cyber grid lines.
+  - The four supplied portraits loop in order: Bryan, Alberto, Duncan, Elkan. Each image holds for 4 seconds, then crossfades into the next over 1 second.
+  - Images stay centered with their original aspect ratio and the full portrait visible. The selected theme fills the surrounding space; Restart resets the slideshow to the first image.
+  - Multi-color theme gradient rendered directly via ImGui DrawList with subtle cyber grid lines, also used as a fallback if images are unavailable.
   - Desktop shortcut icons (`Task Manager`, `File Explorer`, `Terminal`, `System Info`, `Readme.txt`).
   - Real-time system clock and hardware monitor card anchored in the fixed top-right corner.
   - Prominent **PWR (Power)** button invoking a clean shutdown confirmation dialog rather than a hard crash/force-exit.
@@ -72,7 +77,7 @@ The emulator implements a sequential boot/runtime state machine:
     - `System Info`
     - `Notepad`
   - **System Tray**:
-    - Interactive volume slider popup.
+    - Interactive volume/mute popup controlling the startup effect only. It does not change the host's system volume.
     - Virtual network connection status popup.
     - Live digital clock with date tooltip.
     - Dedicated quick `PWR` button.
@@ -115,28 +120,47 @@ os-mockup/
 ├── README.txt
 ├── .gitignore
 ├── imgui.ini
+├── assets/
+│   ├── audio/
+│   │   └── boot.mp3
+│   └── wallpapers/
+│       ├── bryan2x2.jpg
+│       ├── my2x2.jpg
+│       ├── duncan2x2.jpg
+│       └── kan2x2.png
 ├── tests/
 │   ├── SystemContextTests.cpp
-│   └── UiInteractionTests.cpp
+│   ├── UiInteractionTests.cpp
+│   └── MediaTests.cpp
 ├── external/
-│   └── glad/
-│       ├── include/
-│       │   ├── KHR/
-│       │   │   └── khrplatform.h
-│       │   └── glad/
-│       │       └── glad.h
-│       └── src/
-│           └── glad.c
+│   ├── glad/
+│   │   ├── include/
+│   │   │   ├── KHR/
+│   │   │   │   └── khrplatform.h
+│   │   │   └── glad/
+│   │   │       └── glad.h
+│   │   └── src/
+│   │       └── glad.c
+│   ├── stb/
+│   │   └── stb_image.h
+│   └── miniaudio/
+│       └── miniaudio.h
 └── src/
     ├── Main.cpp
     ├── Core/
+    │   ├── AssetPaths.h
+    │   ├── AssetPaths.cpp
     │   ├── Types.h
     │   ├── SystemContext.h
     │   └── SystemContext.cpp
     ├── Boot/
+    │   ├── BootAudio.h
+    │   ├── BootAudio.cpp
     │   ├── BootScreens.h
     │   └── BootScreens.cpp
     ├── Desktop/
+    │   ├── WallpaperSlideshow.h
+    │   ├── WallpaperSlideshow.cpp
     │   ├── DesktopBackground.h
     │   ├── DesktopBackground.cpp
     │   ├── Taskbar.h
@@ -162,7 +186,7 @@ os-mockup/
 
 ## Build & Run Instructions
 
-Dependencies (GLFW and Dear ImGui) are fetched automatically via CMake's `FetchContent`, and GLAD is bundled directly in the repository. The first configuration needs network access; running the application needs a working OpenGL 3.3 driver.
+Dependencies (GLFW and Dear ImGui) are fetched automatically via CMake's `FetchContent`; GLAD, stb_image, and miniaudio are bundled directly in the repository. The first configuration needs network access; running the application needs a working OpenGL 3.3 driver. Startup audio uses an available playback device; missing audio hardware or media files are logged without preventing the desktop from opening.
 
 ### Prerequisites
 - A C++17 compatible compiler:
@@ -213,6 +237,8 @@ cmake --build build --config Release
 ./build/bin/os_mockup
 ```
 
+CMake copies `assets` beside the executable on every build. When sharing the executable, keep that `assets` folder beside it, including `audio/boot.mp3` and all four files in `wallpapers`. Media paths are resolved relative to the executable, so launching from an IDE or another working directory still loads them. To change the slideshow timing, adjust `HoldSeconds` and `FadeSeconds` in `src/Desktop/WallpaperSlideshow.h` and rebuild.
+
 ---
 
 ## Keyboard Shortcuts & Quick Actions
@@ -238,15 +264,17 @@ cmake --build build --config Release --parallel 4
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The context tests cover virtual-file navigation, source-aware saving and unsaved-open decisions, protected process behavior, bounded usage totals, boot/reboot state, and performance-history timing. CPU-side ImGui tests cover window bounds, compact taskbar app launches, power cancellation, theme changes, Ctrl+S, and the Save/Discard/Cancel decisions. Native rendering still requires an OpenGL driver. Process usage values, CPU specifications, network/audio state, and OS scheduler labels are simulated; the clock and OpenGL renderer information come from the host.
+The context tests cover virtual-file navigation, source-aware saving and unsaved-open decisions, protected process behavior, bounded usage totals, boot/reboot state, and performance-history timing. CPU-side ImGui tests cover window bounds, compact taskbar app launches, power cancellation, theme changes, Ctrl+S, and the Save/Discard/Cancel decisions. Process usage values, CPU specifications, network state, and OS scheduler labels are simulated; the clock and OpenGL renderer information come from the host. Startup audio uses the host playback device, with application volume/mute controlling only this effect.
 
-CTest registers `system_context` and `ui_interactions`. The tests use explicit checks in Release builds. The ImGui suite creates a CPU-side context and stubs OpenGL metadata; it does not exercise the GLFW close callback or prove native GPU rendering. To build only the application, configure with `-DBUILD_TESTING=OFF`.
+CTest registers `system_context`, `ui_interactions`, and `media_slideshow`. The tests use explicit checks in Release builds. The ImGui suite creates a CPU-side context and stubs OpenGL metadata; it does not exercise the GLFW close callback. The media slideshow test creates a hidden native GLFW/OpenGL context and skips when a usable GPU/display is unavailable. Listen for the startup effect and verify the title-bar close dialog in the running app. To build only the application, configure with `-DBUILD_TESTING=OFF`.
 
 For coursework packaging, see [README.txt](README.txt) for the group members, entry point, and submission preparation. The technical presentation and assessment recording must be prepared separately.
 
 ## Architecture and Extension
 
 The entry point is `int main(int argc, char** argv)` in `src/Main.cpp`. It creates a GLFW window and OpenGL context, loads GLAD, initializes the ImGui backends, constructs `OS::SystemContext`, and runs the frame loop. Each frame polls input, advances the context, renders the current boot/desktop state, submits ImGui draw data to OpenGL, and swaps buffers.
+
+`AssetPaths` locates the bundled media beside the executable. `WallpaperSlideshow` loads the portraits into OpenGL textures once and blends them on the desktop draw list; its textures are released before the OpenGL context is destroyed. `BootAudio` decodes the short MP3 once, schedules playback once per boot, and applies the context's volume/mute settings to that sound. Restart resets both media features; missing images are skipped and unavailable audio is logged.
 
 `SystemContext` owns the boot timers, simulated process table, performance history, virtual file tree, terminal output, editor document, theme, and visibility flags. App modules expose `static void render(SystemContext&, float)` and share this context. UI-specific state in static members means there is one instance of each app.
 
@@ -278,7 +306,7 @@ Both Settings and the terminal `theme` command select the same theme state. The 
 - The context remains centralized, and static UI state supports one window per app. Multiple independent instances would require separate instance state.
 - The VFS uses nested child vectors and retains a current-directory pointer. Future structural mutations must preserve node identity or re-resolve directory/document paths safely.
 - App visibility is independent of the simulated process table. Opening or hiding a window does not create or terminate a host or virtual process.
-- The default ImGui font is used. The project provides no custom font loader, operating-system scheduler, real audio/network control, or persistent virtual filesystem.
+- The default ImGui font is used. The project provides no custom font loader, operating-system scheduler, host system-volume/network control, or persistent virtual filesystem. Audio playback is limited to the bundled startup effect.
 - The supported minimum client size is 640 x 480. Narrow tables scroll horizontally. Committed `imgui.ini` supplies initial layout settings; removing the local layout file resets them.
 
 ---
@@ -287,3 +315,4 @@ Both Settings and the terminal `theme` command select the same theme state. The 
 
 - Developed for Operating Systems Engineering (CSOPESY).
 - Powered by [Dear ImGui](https://github.com/ocornut/imgui), [GLFW](https://www.glfw.org/), and [GLAD](https://glad.dav1d.de/).
+- Media loading and playback use [stb_image](https://github.com/nothings/stb) and [miniaudio](https://github.com/mackron/miniaudio).

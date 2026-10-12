@@ -142,6 +142,7 @@ typedef khronos_int64_t  GLint64;
 #define GL_UNPACK_ALIGNMENT               0x0CF5
 #define GL_PACK_ALIGNMENT                 0x0D05
 #define GL_TEXTURE_2D                     0x0DE1
+#define GL_TEXTURE_BINDING_2D             0x8069
 #define GL_BYTE                           0x1400
 #define GL_UNSIGNED_BYTE                  0x1401
 #define GL_SHORT                          0x1402
@@ -158,6 +159,7 @@ typedef khronos_int64_t  GLint64;
 #define GL_ALPHA                          0x1906
 #define GL_RGB                            0x1907
 #define GL_RGBA                           0x1908
+#define GL_RGBA8                          0x8058
 #define GL_LINE                           0x1B01
 #define GL_FILL                           0x1B02
 #define GL_NEAREST                        0x2600

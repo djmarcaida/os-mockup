@@ -46,7 +46,7 @@ void Taskbar::render(SystemContext& ctx, float deltaTime) {
         if (Ui::iconButton("##volume", "Volume", Ui::Icon::Volume, ImVec2(volumeWidth, 32.0f),
                            ctx.showVolumePopup, labels)) ctx.showVolumePopup = !ctx.showVolumePopup;
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Simulated audio: %d%% (%s)", ctx.volumeLevel, ctx.isMuted ? "Muted" : "Active");
+            ImGui::SetTooltip("Startup sound: %d%% (%s)", ctx.volumeLevel, ctx.isMuted ? "Muted" : "Active");
         ImGui::SameLine();
         if (Ui::iconButton("##network", "Virtual network", Ui::Icon::Network, ImVec2(42.0f, 32.0f),
                            ctx.showNetworkPopup)) ctx.showNetworkPopup = !ctx.showNetworkPopup;
@@ -75,10 +75,10 @@ void Taskbar::render(SystemContext& ctx, float deltaTime) {
         ImGui::SetNextWindowSize(ImVec2(216.0f, 148.0f));
         if (ImGui::Begin("Volume Control##tray_vol", &ctx.showVolumePopup,
                          ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
-            ImGui::TextDisabled("Simulated audio controls");
+            ImGui::TextDisabled("Startup sound volume");
             ImGui::SetNextItemWidth(-1.0f);
             ImGui::SliderInt("##volume_slider", &ctx.volumeLevel, 0, 100, "%d%%");
-            ImGui::Checkbox("Mute Audio", &ctx.isMuted);
+            ImGui::Checkbox("Mute startup sound", &ctx.isMuted);
             if (ImGui::Button("Close")) ctx.showVolumePopup = false;
         }
         ImGui::End();

@@ -44,6 +44,7 @@ FetchContent_MakeAvailable(glfw imgui)
 
 # 3. Find System OpenGL
 find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
 
 # -----------------------------------------------------------------------------
 # GLAD Static Library (Bundled OpenGL 3.3 Core Loader)
@@ -83,15 +84,33 @@ target_link_libraries(imgui PUBLIC
 # -----------------------------------------------------------------------------
 # Main OS Mockup Emulator Target
 # -----------------------------------------------------------------------------
+add_library(os_media STATIC
+    src/Boot/BootAudio.cpp
+    src/Desktop/WallpaperSlideshow.cpp
+)
+target_include_directories(os_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(os_media SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/miniaudio
+)
+target_link_libraries(os_media PUBLIC imgui glad OpenGL::GL Threads::Threads ${CMAKE_DL_LIBS})
+if(UNIX)
+    target_link_libraries(os_media PRIVATE m)
+endif()
+
 set(OS_MOCKUP_SOURCES
     src/Main.cpp
+    src/Core/AssetPaths.h
+    src/Core/AssetPaths.cpp
     src/Core/Types.h
     src/Core/SystemContext.h
     src/Core/SystemContext.cpp
     src/Boot/BootScreens.h
     src/Boot/BootScreens.cpp
+    src/Boot/BootAudio.h
     src/Desktop/DesktopBackground.h
     src/Desktop/DesktopBackground.cpp
+    src/Desktop/WallpaperSlideshow.h
     src/Desktop/Taskbar.h
     src/Desktop/Taskbar.cpp
     src/Apps/TaskManagerWindow.h
@@ -116,17 +135,28 @@ target_include_directories(os_mockup PRIVATE
 )
 
 target_link_libraries(os_mockup PRIVATE
+    os_media
     imgui
     glad
     glfw
     OpenGL::GL
 )
 
+# Keep the provided media in a portable folder beside Debug/Release executables.
+add_custom_target(os_mockup_assets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:os_mockup>/assets"
+    COMMENT "Copying wallpaper and boot audio assets"
+)
+add_dependencies(os_mockup os_mockup_assets)
+
 # Platform-specific configurations
 if (MSVC)
     target_compile_options(os_mockup PRIVATE /W4 /permissive-)
+    target_compile_options(os_media PRIVATE /W4 /permissive-)
 else()
     target_compile_options(os_mockup PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(os_media PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 include(CTest)
@@ -147,8 +177,20 @@ if(BUILD_TESTING)
     list(REMOVE_ITEM OS_MOCKUP_UI_TEST_SOURCES src/Main.cpp)
     add_executable(os_ui_tests tests/UiInteractionTests.cpp ${OS_MOCKUP_UI_TEST_SOURCES})
     target_include_directories(os_ui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(os_ui_tests PRIVATE imgui glad glfw OpenGL::GL)
+    target_link_libraries(os_ui_tests PRIVATE os_media imgui glad glfw OpenGL::GL)
     add_test(NAME ui_interactions COMMAND os_ui_tests)
+
+    add_executable(os_media_tests
+        tests/MediaTests.cpp
+        src/Core/SystemContext.cpp
+        src/Desktop/DesktopBackground.cpp
+        src/Desktop/Taskbar.cpp
+    )
+    target_include_directories(os_media_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(os_media_tests PRIVATE os_media imgui glad glfw OpenGL::GL)
+    add_dependencies(os_media_tests os_mockup)
+    add_test(NAME media_slideshow COMMAND os_media_tests "$<TARGET_FILE_DIR:os_mockup>/assets")
+    set_tests_properties(media_slideshow PROPERTIES LABELS native SKIP_RETURN_CODE 77)
 endif()
 
 message(STATUS "Configured os_mockup executable target successfully.")

@@ -1,5 +1,6 @@
 #include "DesktopBackground.h"
 #include "UiHelpers.h"
+#include "WallpaperSlideshow.h"
 #include <imgui.h>
 #include <iomanip>
 #include <sstream>
@@ -7,7 +8,6 @@
 namespace OS {
 
 void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
-    (void)deltaTime;
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
     // 1. Full-screen background window
@@ -69,6 +69,8 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
                 IM_COL32(0, 10, 3, 255)
             );
         }
+
+        WallpaperSlideshow::render(drawList, pMin, viewport->Size, deltaTime);
 
         // Watermark in bottom right (above taskbar)
         const char* watermark = "CSOPESY Workstation OS v2.4 (Enterprise Edition)";
