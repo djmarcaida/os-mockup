@@ -94,6 +94,8 @@ public:
     // Theme & Visuals
     ThemeMode getTheme() const { return m_theme; }
     void setTheme(ThemeMode theme);
+    WallpaperSizing getWallpaperSizing() const { return m_wallpaperSizing; }
+    void setWallpaperSizing(WallpaperSizing sizing) { m_wallpaperSizing = sizing; }
 
     // Hardware Specs (Mock / Real)
     std::string cpuModel = "Intel(R) Pentium(R) III 733MHz (Coppermine)";
@@ -138,8 +140,9 @@ private:
     std::vector<TerminalLine> m_terminalLines;
     std::vector<std::string> m_commandHistory;
 
-    // Theme
+    // Appearance settings last for the session, including reboot.
     ThemeMode m_theme = ThemeMode::CYBER_DARK;
+    WallpaperSizing m_wallpaperSizing = WallpaperSizing::FIT;
 };
 
 } // namespace OS

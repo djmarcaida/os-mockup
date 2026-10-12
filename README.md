@@ -62,7 +62,7 @@ The emulator implements a sequential boot/runtime state machine:
 - **Desktop Background (Base Layer)**:
   - Fullscreen, borderless, non-collapsible ImGui background window.
   - The four supplied portraits loop in order: Bryan, Alberto, Duncan, Elkan. Each image holds for 4 seconds, then crossfades into the next over 1 second.
-  - Images stay centered with their original aspect ratio and the full portrait visible. The selected theme fills the surrounding space; Restart resets the slideshow to the first image.
+  - **System Info > Appearance > Wallpaper** offers **Fit** (default: the full image stays visible and proportional), **Crop to fill** (centered crop preserving proportions), and **Stretch to fill** (the full image stretches to fill). All modes use the desktop area above the taskbar. The selected theme fills any surrounding space; Restart resets the slideshow to the first image and retains the session's sizing choice.
   - Multi-color theme gradient rendered directly via ImGui DrawList with subtle cyber grid lines, also used as a fallback if images are unavailable.
   - Desktop shortcut icons (`Task Manager`, `File Explorer`, `Terminal`, `System Info`, `Readme.txt`).
   - Real-time system clock and hardware monitor card anchored in the fixed top-right corner.

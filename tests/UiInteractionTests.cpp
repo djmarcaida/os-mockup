@@ -64,6 +64,89 @@ void activateModalButton(OS::SystemContext& context, const char* label, ImVec2 s
     frame(context, size);
 }
 
+ImGuiID systemInfoTabId(const char* label) {
+    ImGuiWindow* settings = visibleWindow("###SYSINFO_WND");
+    const ImGuiID tabBarId = settings->GetID("SysInfoTabBar");
+    ImGuiTabBar* tabBar = ImGui::GetCurrentContext()->TabBars.GetByKey(tabBarId);
+    check(tabBar != nullptr, "System Info tab bar was not registered");
+
+    const ImGuiID tabId = ImHashStr(label, 0, tabBarId);
+    check(ImGui::TabBarFindTabByID(tabBar, tabId) != nullptr,
+          std::string("Missing System Info tab: ") + label);
+    return tabId;
+}
+
+void selectWallpaperSizing(OS::SystemContext& context, ImVec2 size,
+                           int optionIndex, OS::WallpaperSizing expected,
+                           const char* optionLabel) {
+    context.setState(OS::BootState::DESKTOP);
+    context.showTaskManager = context.showFileExplorer = context.showTerminal = false;
+    context.showNotepad = false;
+    context.showSystemInfo = true;
+    frame(context, size);
+    frame(context, size);
+
+    checkAppBounds("###SYSINFO_WND", size);
+    const ImGuiID appearanceTabId = systemInfoTabId("Appearance");
+    ImGui::ActivateItemByID(appearanceTabId);
+    frame(context, size);
+    frame(context, size);
+
+    ImGuiWindow* settings = visibleWindow("###SYSINFO_WND");
+    const ImGuiID tabBarId = settings->GetID("SysInfoTabBar");
+    ImGuiTabBar* tabBar = ImGui::GetCurrentContext()->TabBars.GetByKey(tabBarId);
+    check(tabBar && tabBar->SelectedTabId == appearanceTabId,
+          "Appearance tab could not be selected at the current viewport size");
+
+    const ImGuiID comboId = ImHashStr("Sizing##wallpaper_sizing", 0, appearanceTabId);
+    ImGui::ActivateItemByID(comboId);
+    frame(context, size);
+    frame(context, size);
+
+    ImGuiWindow* popup = visibleWindow("##Combo_00");
+    check(popup->Pos.x >= 0.0f && popup->Pos.y >= 0.0f &&
+          popup->Pos.x + popup->SizeFull.x <= size.x + 1.0f &&
+          popup->Pos.y + popup->SizeFull.y <= size.y + 1.0f,
+          "Wallpaper sizing options are outside the viewport");
+
+    const ImGuiID optionSeed = popup->GetID(optionIndex);
+    const ImGuiID optionId = ImHashStr(optionLabel, 0, optionSeed);
+    ImGui::ActivateItemByID(optionId);
+    frame(context, size);
+    frame(context, size);
+    check(context.getWallpaperSizing() == expected,
+          std::string("Selecting wallpaper sizing did not update context: ") + optionLabel);
+}
+
+void wallpaperSizingChecks(OS::SystemContext& context) {
+    const ImVec2 size(640, 480);
+    check(context.getWallpaperSizing() == OS::WallpaperSizing::FIT,
+          "Wallpaper sizing should default to Fit");
+
+    struct Selection {
+        int index;
+        OS::WallpaperSizing value;
+        const char* label;
+    };
+    const Selection selections[] = {
+        {1, OS::WallpaperSizing::CROP, "Crop to fill"},
+        {0, OS::WallpaperSizing::FIT, "Fit"},
+        {2, OS::WallpaperSizing::STRETCH, "Stretch to fill"}
+    };
+
+    for (const Selection& selection : selections) {
+        selectWallpaperSizing(context, size, selection.index, selection.value, selection.label);
+        context.reboot();
+        check(context.getWallpaperSizing() == selection.value,
+              std::string("Wallpaper sizing did not survive reboot: ") + selection.label);
+    }
+
+    // Leave the following editor checks in the desktop state, as before.
+    context.setState(OS::BootState::DESKTOP);
+    context.showSystemInfo = false;
+    frame(context, size);
+}
+
 void viewportChecks(OS::SystemContext& context) {
     context.showTaskManager = context.showFileExplorer = context.showTerminal = true;
     context.showSystemInfo = context.showNotepad = true;
@@ -128,6 +211,8 @@ void interactionChecks(OS::SystemContext& context) {
     frame(context, size);
     const ImVec4 green = ImGui::GetStyle().Colors[ImGuiCol_Text];
     check(amber.x > amber.y && green.y > green.x, "Terminal theme did not apply ImGui palette");
+
+    wallpaperSizingChecks(context);
 
     context.newNotepadDocument();
     context.notepadBuffer = "Saved through the focused editor shortcut";

@@ -1,6 +1,7 @@
 #include "Desktop/WallpaperSlideshow.h"
 #include "Desktop/DesktopBackground.h"
 #include "Desktop/Taskbar.h"
+#include "Desktop/UiHelpers.h"
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -49,12 +50,46 @@ struct ImageDraw {
     unsigned int alpha;
     ImVec2 minimum;
     ImVec2 maximum;
+    ImVec2 uvMinimum;
+    ImVec2 uvMaximum;
 };
 
 using Frame = std::vector<ImageDraw>;
 
+Frame imageDraws(ImDrawList* drawList) {
+    Frame result;
+    for (const ImDrawCmd& command : drawList->CmdBuffer) {
+        if (command.ElemCount == 0 || command.UserCallback) continue;
+        // ImGui may batch opaque and translucent image quads into one command.
+        // Inspect each triangle's vertices so batching cannot hide layer alpha.
+        for (unsigned int triangle = 0; triangle < command.ElemCount; triangle += 3) {
+            ImVec2 minimum(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+            ImVec2 maximum(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
+            ImVec2 uvMinimum(1, 1), uvMaximum(0, 0);
+            const ImDrawVert& first = drawList->VtxBuffer[command.VtxOffset +
+                drawList->IdxBuffer[command.IdxOffset + triangle]];
+            for (unsigned int offset = triangle; offset < triangle + 3; ++offset) {
+                const ImDrawVert& vertex = drawList->VtxBuffer[command.VtxOffset +
+                    drawList->IdxBuffer[command.IdxOffset + offset]];
+                minimum.x = std::min(minimum.x, vertex.pos.x);
+                minimum.y = std::min(minimum.y, vertex.pos.y);
+                maximum.x = std::max(maximum.x, vertex.pos.x);
+                maximum.y = std::max(maximum.y, vertex.pos.y);
+                uvMinimum.x = std::min(uvMinimum.x, vertex.uv.x);
+                uvMinimum.y = std::min(uvMinimum.y, vertex.uv.y);
+                uvMaximum.x = std::max(uvMaximum.x, vertex.uv.x);
+                uvMaximum.y = std::max(uvMaximum.y, vertex.uv.y);
+            }
+            result.push_back({command.GetTexID(), (first.col >> IM_COL32_A_SHIFT) & 255U,
+                              minimum, maximum, uvMinimum, uvMaximum});
+        }
+    }
+    return result;
+}
+
 Frame frame(float deltaTime, ImVec2 size = ImVec2(1280, 800),
-            ImVec2 position = ImVec2(0, 0)) {
+            ImVec2 position = ImVec2(0, 0),
+            OS::WallpaperSizing sizing = OS::WallpaperSizing::FIT) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(1280, 800);
@@ -62,35 +97,17 @@ Frame frame(float deltaTime, ImVec2 size = ImVec2(1280, 800),
     io.DeltaTime = 1.0f / 60.0f;
     ImGui::NewFrame();
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-    OS::WallpaperSlideshow::render(drawList, position, size, deltaTime);
+    OS::WallpaperSlideshow::render(drawList, position, size, deltaTime, sizing);
     ImGui::Render();
-
-    Frame result;
-    for (const ImDrawCmd& command : drawList->CmdBuffer) {
-        if (command.ElemCount == 0 || command.UserCallback) continue;
-        ImVec2 minimum(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-        ImVec2 maximum(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
-        const ImDrawVert& first = drawList->VtxBuffer[command.VtxOffset +
-            drawList->IdxBuffer[command.IdxOffset]];
-        for (unsigned int offset = 0; offset < command.ElemCount; ++offset) {
-            const ImDrawVert& vertex = drawList->VtxBuffer[command.VtxOffset +
-                drawList->IdxBuffer[command.IdxOffset + offset]];
-            minimum.x = std::min(minimum.x, vertex.pos.x);
-            minimum.y = std::min(minimum.y, vertex.pos.y);
-            maximum.x = std::max(maximum.x, vertex.pos.x);
-            maximum.y = std::max(maximum.y, vertex.pos.y);
-        }
-        result.push_back({command.GetTexID(), (first.col >> IM_COL32_A_SHIFT) & 255U,
-                          minimum, maximum});
-    }
-    return result;
+    return imageDraws(drawList);
 }
 
 Frame atTime(float elapsed, ImVec2 size = ImVec2(1280, 800),
-             ImVec2 position = ImVec2(0, 0)) {
+             ImVec2 position = ImVec2(0, 0),
+             OS::WallpaperSizing sizing = OS::WallpaperSizing::FIT) {
     OS::WallpaperSlideshow::reset();
-    frame(elapsed, size, position);
-    return frame(0, size, position);
+    frame(elapsed, size, position, sizing);
+    return frame(0, size, position, sizing);
 }
 
 std::set<ImTextureID> textures(const Frame& value) {
@@ -141,6 +158,108 @@ void checkGeometry(ImTextureID texture, ImVec2 size, ImVec2 position) {
           draw.maximum.x <= position.x + size.x + 0.1f &&
           draw.maximum.y <= position.y + size.y + 0.1f,
           "Portrait must fit fully inside the viewport");
+}
+
+bool near(float left, float right) { return std::fabs(left - right) < 0.001f; }
+
+void checkSizing(const ImageDraw& draw, ImVec2 size, ImVec2 position,
+                 OS::WallpaperSizing sizing) {
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(draw.texture));
+    GLint width = 0, height = 0;
+    getTextureParameter(GL_TEXTURE_2D, 0, 0x1000, &width);
+    getTextureParameter(GL_TEXTURE_2D, 0, 0x1001, &height);
+    const float drawnWidth = draw.maximum.x - draw.minimum.x;
+    const float drawnHeight = draw.maximum.y - draw.minimum.y;
+    const float uvWidth = draw.uvMaximum.x - draw.uvMinimum.x;
+    const float uvHeight = draw.uvMaximum.y - draw.uvMinimum.y;
+    check(width > 0 && height > 0 && uvWidth > 0 && uvHeight > 0,
+          "Sizing must use a non-empty image region");
+    check(draw.minimum.x >= position.x - 0.1f && draw.minimum.y >= position.y - 0.1f &&
+          draw.maximum.x <= position.x + size.x + 0.1f &&
+          draw.maximum.y <= position.y + size.y + 0.1f,
+          "Sizing must not draw outside the visible desktop");
+    check(near(draw.uvMinimum.x + draw.uvMaximum.x, 1) &&
+          near(draw.uvMinimum.y + draw.uvMaximum.y, 1),
+          "Image regions must remain centered");
+    if (sizing != OS::WallpaperSizing::FIT) {
+        check(near(draw.minimum.x, position.x) && near(draw.minimum.y, position.y) &&
+              near(drawnWidth, size.x) && near(drawnHeight, size.y),
+              "Crop and Stretch must fill the desktop without margins");
+    }
+    if (sizing == OS::WallpaperSizing::CROP) {
+        check(draw.uvMinimum.x >= 0 && draw.uvMinimum.y >= 0 &&
+              draw.uvMaximum.x <= 1 && draw.uvMaximum.y <= 1 &&
+              (near(uvWidth, 1) || near(uvHeight, 1)),
+              "Crop must retain a full source axis without repeating pixels");
+        check(near(drawnWidth / (width * uvWidth), drawnHeight / (height * uvHeight)),
+              "Crop must preserve the source image's aspect ratio");
+        const bool wider = size.x / size.y > static_cast<float>(width) / height;
+        check(wider ? near(uvWidth, 1) && uvHeight < 1 : near(uvHeight, 1) && uvWidth < 1,
+              "Crop must trim the correct source axis for wide and tall desktops");
+    } else {
+        check(near(draw.uvMinimum.x, 0) && near(draw.uvMinimum.y, 0) &&
+              near(draw.uvMaximum.x, 1) && near(draw.uvMaximum.y, 1),
+              "Fit and Stretch must retain the whole source image");
+        if (sizing == OS::WallpaperSizing::FIT) {
+            check(near(drawnWidth / width, drawnHeight / height),
+                  "Fit must preserve the source image's aspect ratio");
+        }
+    }
+}
+
+void sizingChecks(const std::array<ImTextureID, 4>& imageTextures) {
+    const OS::WallpaperSizing modes[] = {OS::WallpaperSizing::FIT,
+        OS::WallpaperSizing::CROP, OS::WallpaperSizing::STRETCH};
+    for (OS::WallpaperSizing mode : modes) {
+        for (ImVec2 size : {ImVec2(1280, 756), ImVec2(640, 436), ImVec2(300, 600)}) {
+            const ImVec2 position(30, 20);
+            const Frame value = atTime(0, size, position, mode);
+            checkOnly(value, imageTextures[0], "Sizing must retain the current wallpaper");
+            checkSizing(value.front(), size, position, mode);
+        }
+        checkIncoming(atTime(4.5f, ImVec2(1280, 756), ImVec2(0, 0), mode),
+                      imageTextures[0], imageTextures[1], 128,
+                      "Every sizing mode must crossfade with an opaque base");
+        checkIncoming(atTime(19.5f, ImVec2(300, 600), ImVec2(0, 0), mode),
+                      imageTextures[3], imageTextures[0], 128,
+                      "Every sizing mode must crossfade the loop boundary");
+    }
+    atTime(7);
+    checkOnly(frame(0, ImVec2(1280, 756), ImVec2(0, 0), OS::WallpaperSizing::CROP),
+              imageTextures[1], "Changing to Crop must not restart the slideshow");
+    checkOnly(frame(0, ImVec2(1280, 756), ImVec2(0, 0), OS::WallpaperSizing::STRETCH),
+              imageTextures[1], "Changing to Stretch must not restart the slideshow");
+
+    // Exercise the real desktop integration, including the taskbar's reserved area.
+    OS::SystemContext context;
+    context.setState(OS::BootState::DESKTOP);
+    for (OS::WallpaperSizing mode : modes) {
+        context.setWallpaperSizing(mode);
+        for (ImVec2 size : {ImVec2(1280, 800), ImVec2(640, 480)}) {
+            ImGuiIO& io = ImGui::GetIO();
+            for (int pass = 0; pass < 2; ++pass) {
+                OS::WallpaperSlideshow::reset();
+                ImGui_ImplOpenGL3_NewFrame();
+                io.DisplaySize = size;
+                io.DeltaTime = 1.0f / 60.0f;
+                ImGui::NewFrame();
+                OS::DesktopBackground::render(context, 0);
+                OS::Taskbar::render(context, 0);
+                ImGui::Render();
+            }
+            bool found = false;
+            const ImDrawData* data = ImGui::GetDrawData();
+            for (int list = 0; list < data->CmdListsCount; ++list) {
+                for (const ImageDraw& draw : imageDraws(data->CmdLists[list])) {
+                    if (draw.texture != imageTextures[0]) continue;
+                    found = true;
+                    checkSizing(draw, ImVec2(size.x, size.y - OS::Ui::TaskbarHeight),
+                                ImVec2(0, 0), mode);
+                }
+            }
+            check(found, "Desktop must submit the selected sizing mode's wallpaper");
+        }
+    }
 }
 
 void writePreview(const std::filesystem::path& path) {
@@ -221,6 +340,7 @@ void slideshowChecks(const std::filesystem::path& assets, const std::filesystem:
     checkGeometry(imageTextures[0], ImVec2(1280, 800), ImVec2(0, 0));
     checkGeometry(imageTextures[0], ImVec2(640, 480), ImVec2(30, 20));
     checkGeometry(imageTextures[0], ImVec2(300, 600), ImVec2(100, 50));
+    sizingChecks(imageTextures);
 
     atTime(12.0f);
     OS::WallpaperSlideshow::reset();

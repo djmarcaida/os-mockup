@@ -215,6 +215,24 @@ void SystemInfoWindow::render(SystemContext& ctx, float deltaTime) {
                 ImGui::Separator();
                 ImGui::Spacing();
 
+                ImGui::Text("Wallpaper");
+                int wallpaperSizing = static_cast<int>(ctx.getWallpaperSizing());
+                ImGui::SetNextItemWidth(std::min(220.0f, ImGui::GetContentRegionAvail().x - 50.0f));
+                if (ImGui::Combo("Sizing##wallpaper_sizing", &wallpaperSizing,
+                                 "Fit\0Crop to fill\0Stretch to fill\0")) {
+                    ctx.setWallpaperSizing(static_cast<WallpaperSizing>(wallpaperSizing));
+                }
+                const char* sizingDescriptions[] = {
+                    "Show the whole image at its original proportions.",
+                    "Fill the desktop by cropping the edges.",
+                    "Fill the desktop by stretching the image."
+                };
+                ImGui::TextDisabled("%s", sizingDescriptions[wallpaperSizing]);
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
                 ImGui::TextWrapped("Performance & Rendering:");
                 ImGui::TextWrapped("Current FPS : %.1f FPS (%.2f ms/frame)",
                     ImGui::GetIO().Framerate, ImGui::GetIO().Framerate > 0.0f ? 1000.0f / ImGui::GetIO().Framerate : 0.0f);

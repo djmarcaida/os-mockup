@@ -21,6 +21,12 @@ enum class ThemeMode {
     MATRIX_GREEN
 };
 
+enum class WallpaperSizing {
+    FIT,
+    CROP,
+    STRETCH
+};
+
 struct ProcessInfo {
     int pid;
     std::string name;

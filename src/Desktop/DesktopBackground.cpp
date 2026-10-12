@@ -70,7 +70,9 @@ void DesktopBackground::render(SystemContext& ctx, float deltaTime) {
             );
         }
 
-        WallpaperSlideshow::render(drawList, pMin, viewport->Size, deltaTime);
+        const ImVec2 desktopSize(viewport->Size.x,
+                                 std::max(0.0f, viewport->Size.y - Ui::TaskbarHeight));
+        WallpaperSlideshow::render(drawList, pMin, desktopSize, deltaTime, ctx.getWallpaperSizing());
 
         // Watermark in bottom right (above taskbar)
         const char* watermark = "CSOPESY Workstation OS v2.4 (Enterprise Edition)";

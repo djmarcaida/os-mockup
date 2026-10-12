@@ -59,24 +59,50 @@ void WallpaperSlideshow::reset() {
     s_elapsed = 0.0;
 }
 
+WallpaperSlideshow::Placement WallpaperSlideshow::placeImage(const Image& image,
+                                                             ImVec2 position, ImVec2 size,
+                                                             WallpaperSizing sizing) {
+    Placement placement{position, ImVec2(position.x + size.x, position.y + size.y),
+                        ImVec2(0, 0), ImVec2(1, 1)};
+    if (sizing == WallpaperSizing::CROP) {
+        // Cover the desktop without extending geometry outside its bounds.
+        // Sample the centered portion of the image at its original aspect ratio.
+        const float scale = std::max(size.x / image.width, size.y / image.height);
+        const ImVec2 visibleUV(size.x / (image.width * scale),
+                               size.y / (image.height * scale));
+        placement.uvMinimum = ImVec2((1.0f - visibleUV.x) * 0.5f,
+                                     (1.0f - visibleUV.y) * 0.5f);
+        placement.uvMaximum = ImVec2((1.0f + visibleUV.x) * 0.5f,
+                                     (1.0f + visibleUV.y) * 0.5f);
+    } else if (sizing != WallpaperSizing::STRETCH) {
+        // Fit keeps every pixel visible and leaves the theme around the image.
+        const float scale = std::min(size.x / image.width, size.y / image.height);
+        const ImVec2 imageSize(image.width * scale, image.height * scale);
+        placement.minimum = ImVec2(position.x + (size.x - imageSize.x) * 0.5f,
+                                    position.y + (size.y - imageSize.y) * 0.5f);
+        placement.maximum = ImVec2(placement.minimum.x + imageSize.x,
+                                    placement.minimum.y + imageSize.y);
+    }
+    // Stretch uses the full desktop rectangle and the full image UVs.
+    return placement;
+}
+
 void WallpaperSlideshow::drawImage(ImDrawList* drawList, const Image& image,
-                                   ImVec2 position, ImVec2 size, float opacity) {
+                                   const Placement& placement, float opacity) {
     if (opacity <= 0.0f) return;
-    // Contain instead of stretching or cropping the portraits.
-    const float scale = std::min(size.x / image.width, size.y / image.height);
-    const ImVec2 imageSize(image.width * scale, image.height * scale);
-    const ImVec2 minimum(position.x + (size.x - imageSize.x) * 0.5f,
-                         position.y + (size.y - imageSize.y) * 0.5f);
-    const ImVec2 maximum(minimum.x + imageSize.x, minimum.y + imageSize.y);
-    drawList->AddImage(static_cast<ImTextureID>(image.texture), minimum, maximum,
-                       ImVec2(0, 0), ImVec2(1, 1),
+    drawList->AddImage(static_cast<ImTextureID>(image.texture),
+                       placement.minimum, placement.maximum,
+                       placement.uvMinimum, placement.uvMaximum,
                        IM_COL32(255, 255, 255, static_cast<int>(255.0f * opacity + 0.5f)));
 }
 
-void WallpaperSlideshow::render(ImDrawList* drawList, ImVec2 position, ImVec2 size, float deltaTime) {
+void WallpaperSlideshow::render(ImDrawList* drawList, ImVec2 position, ImVec2 size, float deltaTime,
+                                WallpaperSizing sizing) {
     if (s_images.empty() || size.x <= 0.0f || size.y <= 0.0f) return;
+    drawList->PushClipRect(position, ImVec2(position.x + size.x, position.y + size.y), true);
     if (s_images.size() == 1) {
-        drawImage(drawList, s_images.front(), position, size, 1.0f);
+        drawImage(drawList, s_images.front(), placeImage(s_images.front(), position, size, sizing), 1.0f);
+        drawList->PopClipRect();
         return;
     }
     constexpr double interval = HoldSeconds + FadeSeconds;
@@ -86,20 +112,20 @@ void WallpaperSlideshow::render(ImDrawList* drawList, ImVec2 position, ImVec2 si
     float blend = static_cast<float>(std::max(0.0, (imageTime - HoldSeconds) / FadeSeconds));
     blend = blend * blend * (3.0f - 2.0f * blend); // Gentle start/end to the fade.
 
-    drawImage(drawList, s_images[index], position, size, 1.0f - blend);
+    const Image& current = s_images[index];
+    const Placement currentPlacement = placeImage(current, position, size, sizing);
+    drawImage(drawList, current, currentPlacement, 1.0f - blend);
     if (blend > 0.0f) {
         const Image& next = s_images[(index + 1) % s_images.size()];
+        const Placement nextPlacement = placeImage(next, position, size, sizing);
         // Keep the overlap opaque under the incoming layer for a true crossfade.
         // Only the outgoing image's non-overlapping edges fade toward the theme.
-        const float nextScale = std::min(size.x / next.width, size.y / next.height);
-        const ImVec2 nextSize(next.width * nextScale, next.height * nextScale);
-        const ImVec2 nextMin(position.x + (size.x - nextSize.x) * 0.5f,
-                             position.y + (size.y - nextSize.y) * 0.5f);
-        drawList->PushClipRect(nextMin, ImVec2(nextMin.x + nextSize.x, nextMin.y + nextSize.y), true);
-        drawImage(drawList, s_images[index], position, size, 1.0f);
+        drawList->PushClipRect(nextPlacement.minimum, nextPlacement.maximum, true);
+        drawImage(drawList, current, currentPlacement, 1.0f);
         drawList->PopClipRect();
-        drawImage(drawList, next, position, size, blend);
+        drawImage(drawList, next, nextPlacement, blend);
     }
+    drawList->PopClipRect();
 
     // Large frame gaps still advance/loop correctly.
     if (std::isfinite(deltaTime) && deltaTime > 0.0f) {

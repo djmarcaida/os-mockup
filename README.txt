@@ -55,9 +55,12 @@ The volume popup controls only the startup effect's volume and mute; it does not
 change host system volume.
 
 The supplied portraits loop in order: bryan2x2.jpg, my2x2.jpg, duncan2x2.jpg,
-kan2x2.png. Each holds for 4 seconds, followed by a 1-second crossfade. Portraits
-stay fully visible, centered, and proportional, with the selected theme filling
-the surrounding space. Restart returns the slideshow to its first image.
+kan2x2.png. Each holds for 4 seconds, followed by a 1-second crossfade. In System
+Info > Appearance > Wallpaper, choose Fit (default: full proportional image),
+Crop to fill (centered crop preserving proportions), or Stretch to fill. All modes
+fill or fit the desktop above the taskbar; the theme fills any surrounding space.
+Restart returns the slideshow to its first image and retains the session's
+sizing choice. Closing the application resets the choice to Fit.
 Timing constants are in src/Desktop/WallpaperSlideshow.h; rebuild after editing.
 
 Notepad Save changes the virtual file tree for the current session only. It does

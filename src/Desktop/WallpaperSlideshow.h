@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Core/Types.h"
 #include <imgui.h>
 #include <cstddef>
 #include <filesystem>
@@ -16,7 +17,9 @@ public:
     static void initialize(const std::filesystem::path& wallpaperDirectory);
     static void shutdown();
     static void reset();
-    static void render(ImDrawList* drawList, ImVec2 position, ImVec2 size, float deltaTime);
+    // Position/size describe the visible desktop area above the taskbar.
+    static void render(ImDrawList* drawList, ImVec2 position, ImVec2 size, float deltaTime,
+                       WallpaperSizing sizing = WallpaperSizing::FIT);
 
     static std::size_t imageCount() { return s_images.size(); }
 
@@ -26,8 +29,16 @@ private:
         int width = 0;
         int height = 0;
     };
+    struct Placement {
+        ImVec2 minimum;
+        ImVec2 maximum;
+        ImVec2 uvMinimum;
+        ImVec2 uvMaximum;
+    };
+    static Placement placeImage(const Image& image, ImVec2 position, ImVec2 size,
+                                WallpaperSizing sizing);
     static void drawImage(ImDrawList* drawList, const Image& image,
-                          ImVec2 position, ImVec2 size, float opacity);
+                          const Placement& placement, float opacity);
     static std::vector<Image> s_images;
     static double s_elapsed;
 };
